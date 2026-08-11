@@ -8,7 +8,7 @@ The repo name carries a random suffix and the page carries `noindex` because Git
 ## How it works
 
 1. `build_training.py` reads the four pbix sources (plus `Safety101 Emp Import.csv` for names/titles) from the synced Data Hub folder — the pbix itself is never read — and renders `index.html` from `template.html` with the data embedded (`training_data.json` alongside).
-2. `.github/workflows/refresh.yml` mirrors pulse-web's daily 9 AM Eastern refresh (dual cron + guard). It **no-ops green until the three Graph secrets are added** (`TENANT_ID`, `CLIENT_ID`, `CLIENT_SECRET` — Foxtrot Report Automation app, same values as pulse-web). Until then, refresh locally: `python build_training.py` then commit/push `index.html` + `training_data.json`.
+2. `.github/workflows/refresh.yml` mirrors pulse-web's daily 9 AM Eastern refresh (dual cron + guard). The three Graph secrets (`TENANT_ID`, `CLIENT_ID`, `CLIENT_SECRET`) are configured (added 2026-08-11 from the ERP `Python Scripts\API Keys` folder — the "Entra Enterprise App GitHub Connection" app; renew the secret there and in this repo when it expires). Manual refresh still works: `python build_training.py` then commit/push, or dispatch the workflow from the Actions tab.
 3. `fetch_training_sources.py` is the CI download step (Graph client credentials, same Data Hub drive ID as pulse-web). `TRAIN_DATA_DIR=sources python build_training.py` mimics CI locally.
 
 ## Sources (as found in the pbix Power Query)
