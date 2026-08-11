@@ -1,0 +1,460 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<title>Foxtrot Training Pulse</title>
+<style>
+/* Light-only, matching the ERP and Labor Pulse — OS dark mode intentionally ignored */
+:root{
+  color-scheme: light;
+  --navy:#0f2238; --navy2:#16314f; --orange:#f07f1b; --ink:#0c1a2b;
+  --paper:#f4f6f9; --surface:#ffffff; --muted:#7e8aa0; --line:#e2e7ef;
+  --good:#1f9d57; --bad:#d2453b; --rowtint:#fbfcfe; --headtxt:#c7d2e2;
+  --tipbg:#0f2238; --tiptx:#ffffff;
+  --lms:#2f6db6; --s101:#f07f1b;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font-family:'Barlow','Segoe UI',system-ui,sans-serif;font-size:14px}
+.topbar{display:flex;align-items:center;gap:18px;background:var(--navy);color:#fff;
+  padding:0 22px;height:60px;position:sticky;top:0;z-index:30}
+.brand{font-size:19px;font-weight:800;letter-spacing:.01em}
+.brand span{color:var(--orange)}
+.topmeta{margin-left:auto;font-size:12px;color:#9fb0c8;text-align:right;line-height:1.35}
+.wrap{max-width:1180px;margin:0 auto;padding:22px 22px 60px}
+h2{color:var(--ink);font-size:22px;font-weight:800;margin:0}
+h2 .sub{color:var(--muted);font-weight:600;font-size:14px}
+.controls{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;margin:14px 0 18px}
+.controls label{font-size:13px;font-weight:600;color:var(--muted)}
+select{font:inherit;font-weight:600;color:var(--ink);background:var(--surface);
+  border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-width:180px;max-width:280px}
+select:focus{outline:none;border-color:var(--orange)}
+.chipgrp{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.mchip{font:inherit;font-size:12.5px;font-weight:600;color:var(--ink);cursor:pointer;
+  background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:6px 14px}
+.mchip.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+.mchip:focus-visible,select:focus-visible,.wh:focus-visible{outline:2px solid var(--orange);outline-offset:1px}
+.kpis{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:18px;align-items:stretch}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:12px;
+  padding:14px 18px;min-width:168px;flex:0 1 auto}
+.kpi-label{font-size:11.5px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.kpi-val{font-size:25px;font-weight:800;color:var(--ink);margin-top:3px;font-variant-numeric:tabular-nums}
+.kpi-sub{font-size:12px;color:var(--muted);margin-top:2px}
+.kpi-val.pos{color:var(--good)} .kpi-val.neg{color:var(--bad)}
+.gauge-val{font-size:24px;font-weight:800;fill:var(--ink)}
+.badge{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:3px 11px;color:#fff}
+.badge.over{background:var(--bad)} .badge.under{background:var(--good)} .badge.na{background:var(--muted)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;
+  overflow:hidden;margin-bottom:16px}
+.card .hd{background:var(--navy2);color:#fff;font-weight:700;font-size:12.5px;
+  padding:9px 14px;display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center}
+.card .hd .sub{color:#c7d2e2;font-weight:600}
+.watchcard .hd{background:var(--navy)}
+.scroller{overflow-x:auto}
+.vscroll{overflow-y:auto;max-height:480px}
+.grid{display:grid;min-width:560px}
+.grow{display:contents}
+.cell{padding:7px 10px;font-size:13px;border-bottom:1px solid var(--line);
+  white-space:nowrap;font-variant-numeric:tabular-nums;text-align:left;background:var(--surface);
+  overflow:hidden;text-overflow:ellipsis}
+.cell.num{text-align:right}
+.hrow .cell{background:var(--navy);color:#fff;font-weight:700;font-size:12px;border-bottom:0;
+  position:sticky;top:0;z-index:2}
+.oddrow .cell{background:var(--rowtint)}
+.capnote{padding:8px 12px;font-size:12px;color:var(--muted);background:var(--rowtint);
+  border-top:1px solid var(--line)}
+.cols{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}
+.half{flex:1 1 480px;min-width:0}
+.sec{font-size:15px;font-weight:800;color:var(--ink);margin:22px 0 10px}
+.sec .sub{color:var(--muted);font-weight:600;font-size:12.5px}
+.note{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--orange);
+  border-radius:9px;padding:10px 14px;font-size:12.5px;line-height:1.65;color:var(--ink);margin-bottom:16px}
+.note b{color:var(--orange);filter:brightness(.85)}
+.note p{margin:4px 0}
+.legend{display:flex;gap:16px;align-items:center;padding:10px 14px 0;font-size:12.5px;font-weight:600}
+.legend .sw{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.chartwrap{padding:4px 14px 14px}
+.cb{cursor:help}
+.footer{color:var(--muted);font-size:12px;margin-top:24px}
+.wh{cursor:help;text-decoration:underline dotted var(--orange) 1.5px;text-underline-offset:3px}
+#tip{position:fixed;z-index:99;background:var(--tipbg);color:var(--tiptx);border-radius:9px;
+  padding:9px 12px;font-size:12.5px;line-height:1.55;max-width:290px;pointer-events:none;
+  box-shadow:0 8px 24px #0006;display:none}
+#tip .t-hd{font-weight:700;margin-bottom:2px}
+@media(max-width:640px){
+  .wrap{padding:14px 10px 50px}
+  .topbar{padding:0 14px}
+  .kpi{min-width:130px;padding:11px 14px;flex:1 1 40%}
+  .kpi-val{font-size:21px}
+}
+</style>
+
+<header class="topbar">
+  <div class="brand">Foxtrot <span>Training Pulse</span></div>
+  <div class="topmeta">Training compliance &middot; LMS + Safety101<br>Data as of <b id="gen"></b></div>
+</header>
+
+<div class="wrap">
+  <h2 id="title">Training Compliance <span class="sub">&middot; LMS + Safety101</span></h2>
+  <div class="controls">
+    <label for="rmsel">Regional Manager</label>
+    <select id="rmsel" aria-label="Choose regional manager"></select>
+    <label for="locsel">Location</label>
+    <select id="locsel" aria-label="Choose location"></select>
+    <div class="chipgrp" id="lmschips" role="tablist" aria-label="LMS view"></div>
+    <div class="chipgrp" id="s101chips" role="tablist" aria-label="Safety101 view"></div>
+  </div>
+
+  <div class="card watchcard" id="watchcard">
+    <div class="hd" id="watchhd"></div>
+    <div class="vscroll" style="max-height:380px"><div class="scroller" id="watchbody"></div></div>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="cols">
+    <div class="half">
+      <div class="card">
+        <div class="hd" id="lmshd"></div>
+        <div class="vscroll"><div class="scroller" id="lmsbody"></div></div>
+        <div class="capnote" id="lmscap" style="display:none"></div>
+      </div>
+    </div>
+    <div class="half">
+      <div class="card">
+        <div class="hd" id="exphd"></div>
+        <div class="vscroll"><div class="scroller" id="expbody"></div></div>
+        <div class="capnote" id="expcap" style="display:none"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">Safety101 and LMS compliance by location
+    <span class="sub" id="chartsub">&middot; sorted by LMS compliance &middot; dashed line = 85% benchmark</span></div>
+  <div class="card">
+    <div class="legend">
+      <span><span class="sw" style="background:var(--lms)"></span>LMS compliance</span>
+      <span><span class="sw" style="background:var(--s101)"></span>Safety101 compliance</span>
+      <span style="color:var(--muted)">&#x2504; 85% benchmark</span>
+    </div>
+    <div class="chartwrap" id="chart"></div>
+  </div>
+
+  <div class="note">
+    <p><b>How to read this.</b> The web version of the Training Compliance Power BI dashboard.
+    <b>LMS</b> is Paylocity LMS coursework (from the daily learner transcript);
+    <b>Safety101</b> is job-qualification sign-offs from app.safety101.com.</p>
+    <p><b>Needs attention</b> lists anyone whose noncompliant items &mdash; LMS courses in the
+    statuses picked by the LMS chip, plus Safety101 qualifications not fully signed off &mdash;
+    exceed <b>20%</b> of everything assigned to them across both systems. It follows the
+    manager/location filter and the LMS chip. Safety101 items signed off at the partial level
+    count as noncompliant here.</p>
+    <p>The <b>LMS gauge</b> is Completed &divide; (Completed + Overdue) &mdash; courses not yet
+    started or in progress don&rsquo;t count against it, exactly like the Power BI gauge. The
+    <b>Safety101 gauge</b> credits partial sign-offs as half. The by-location chart uses the
+    dashboard&rsquo;s stricter column math (LMS: anything not overdue; Safety101: fully signed
+    off only), so it won&rsquo;t match the gauges exactly. Locations with zero Safety101
+    compliance are left off the chart, matching the original.</p>
+    <p>Gauges and the chart ignore the two status chips &mdash; those only change which rows the
+    two tables and the needs-attention list show. Sources refresh on their own schedules:
+    <span id="freshnote"></span>.</p>
+  </div>
+
+  <div class="footer">Foxtrot Aviation Services Data Department</div>
+</div>
+<div id="tip" role="tooltip"></div>
+
+<script>
+const DATA = /*__DATA__*/;
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
+const pct = (v, dp=2) => v==null ? "&mdash;" : (100*v).toFixed(dp) + "%";
+const ALL = "__ALL__";
+const ROWCAP = 600, THRESH = 0.20;
+
+let rm = ALL, loc = ALL, lmsWide = false, s101NCOnly = false;
+try{
+  const s = JSON.parse(sessionStorage.getItem("tp-state") || "{}");
+  if (s.rm === ALL || DATA.managers[s.rm]) rm = s.rm ?? ALL;
+  if (s.loc === ALL || DATA.locations.includes(s.loc)) loc = s.loc ?? ALL;
+  lmsWide = !!s.lmsWide; s101NCOnly = !!s.s101NCOnly;
+}catch(e){}
+function saveState(){ sessionStorage.setItem("tp-state",
+  JSON.stringify({rm, loc, lmsWide, s101NCOnly})); }
+
+// reverse map: location -> managers
+const locMgrs = {};
+Object.entries(DATA.managers).forEach(([m, locs]) =>
+  locs.forEach(l => (locMgrs[l] = locMgrs[l] || []).push(m)));
+
+function selLocs(){
+  if (loc !== ALL) return new Set([loc]);
+  if (rm !== ALL) return new Set(DATA.managers[rm]);
+  return null;                       // null = everything
+}
+const inSel = (sel, l) => !sel || sel.has(l);
+
+function sumAgg(sel){
+  const t = {lmsC:0,lmsO:0,lmsNS:0,lmsIP:0,lmsTot:0,sN:0,sSum:0,sC1:0,sNC:0,sP:0};
+  Object.entries(DATA.locAgg).forEach(([l, a]) => {
+    if (!inSel(sel, l)) return;
+    Object.keys(t).forEach(k => t[k] += a[k]);
+  });
+  return t;
+}
+
+function scopeLabel(){
+  if (loc !== ALL) return loc;
+  if (rm !== ALL) return rm + " locations";
+  return "all locations";
+}
+
+/* ---------- needs-attention watchlist ---------- */
+function personRows(sel){
+  const out = [];
+  DATA.people.forEach(p => {
+    if (sel && !p.l.some(l => sel.has(l))) return;
+    const lmsBad = p.lo + (lmsWide ? p.lns + p.lip : 0);
+    const sBad = p.snc + p.sp;
+    const total = p.lt + p.st, bad = lmsBad + sBad;
+    if (!total) return;
+    const share = bad / total;
+    if (share > THRESH) out.push({p, lmsBad, sBad, total, bad, share});
+  });
+  out.sort((a,b) => b.share - a.share || b.bad - a.bad);
+  return out;
+}
+
+function renderWatch(sel){
+  const rows = personRows(sel);
+  $("#watchhd").innerHTML = `Needs attention
+    <span class="sub">${rows.length} ${rows.length===1?"person":"people"} with &gt;20% of their
+    assigned LMS + Safety101 items noncompliant &middot; ${esc(scopeLabel())}</span>`;
+  if (!rows.length){
+    $("#watchbody").innerHTML =
+      `<div style="padding:14px;color:var(--muted)">No one over the 20% line under this filter.</div>`;
+    return;
+  }
+  const head = `<div class="grow hrow"><div class="cell">Employee</div><div class="cell">Job Title</div>
+    <div class="cell">Location</div><div class="cell num">LMS ${lmsWide?"overdue + not started":"overdue"}</div>
+    <div class="cell num">S101 noncompliant</div><div class="cell num">Share noncompliant</div></div>`;
+  const body = rows.map((r,i) => `<div class="grow ${i%2?"oddrow":""}">
+    <div class="cell" style="font-weight:600">${esc(r.p.n)}</div>
+    <div class="cell">${esc(r.p.t) || "&mdash;"}</div>
+    <div class="cell">${esc(r.p.l.join(", "))}</div>
+    <div class="cell num">${r.lmsBad} of ${r.p.lt}</div>
+    <div class="cell num">${r.sBad} of ${r.p.st}</div>
+    <div class="cell num"><span class="badge over">${(100*r.share).toFixed(0)}%</span></div>
+  </div>`).join("");
+  $("#watchbody").innerHTML = `<div class="grid" style="min-width:820px;
+    grid-template-columns:minmax(160px,1.4fr) minmax(120px,1fr) minmax(110px,1fr) 150px 140px 150px">
+    ${head}${body}</div>`;
+}
+
+/* ---------- gauges + KPI tiles ---------- */
+function gaugeSVG(v, color, label, sub){
+  const R = 62, CX = 82, CY = 78, LEN = Math.PI * R;
+  const track = `M ${CX-R} ${CY} A ${R} ${R} 0 0 1 ${CX+R} ${CY}`;
+  const off = LEN * (1 - Math.max(0, Math.min(1, v ?? 0)));
+  return `<div class="kpi" style="padding:10px 14px 6px">
+    <div class="kpi-label">${label}</div>
+    <svg width="164" height="92" viewBox="0 0 164 92" role="img"
+         aria-label="${label} ${v==null?"no data":(100*v).toFixed(2)+" percent"}">
+      <path d="${track}" fill="none" stroke="var(--line)" stroke-width="14" stroke-linecap="round"/>
+      <path d="${track}" fill="none" stroke="${color}" stroke-width="14" stroke-linecap="round"
+        stroke-dasharray="${LEN}" stroke-dashoffset="${off}"/>
+      <text x="${CX}" y="${CY-6}" text-anchor="middle" class="gauge-val">${v==null?"&mdash;":(100*v).toFixed(2)+"%"}</text>
+    </svg>
+    <div class="kpi-sub" style="margin-top:-2px">${sub}</div></div>`;
+}
+
+function renderKpis(sel, t){
+  const lmsG = (t.lmsC + t.lmsO) ? t.lmsC / (t.lmsC + t.lmsO) : null;
+  const sG = t.sN ? t.sSum / t.sN : null;
+  const sBadItems = t.sNC + t.sP;
+  const watchN = personRows(sel).length;
+  $("#kpis").innerHTML =
+    gaugeSVG(lmsG, "var(--lms)", "LMS compliance",
+      `completed vs overdue &middot; ${esc(scopeLabel())}`) +
+    gaugeSVG(sG, "var(--s101)", "Safety101 compliance",
+      `partial sign-offs count half &middot; ${esc(scopeLabel())}`) +
+    `<div class="kpi"><div class="kpi-label">LMS courses overdue</div>
+      <div class="kpi-val ${t.lmsO?"neg":"pos"}">${t.lmsO.toLocaleString()}</div>
+      <div class="kpi-sub">of ${t.lmsTot.toLocaleString()} assigned</div></div>
+    <div class="kpi"><div class="kpi-label">S101 items not compliant</div>
+      <div class="kpi-val ${sBadItems?"neg":"pos"}">${sBadItems.toLocaleString()}</div>
+      <div class="kpi-sub">of ${t.sN.toLocaleString()} required (${t.sP.toLocaleString()} partial)</div></div>
+    <div class="kpi"><div class="kpi-label">People needing attention</div>
+      <div class="kpi-val ${watchN?"neg":"pos"}">${watchN}</div>
+      <div class="kpi-sub">over the 20% line</div></div>`;
+}
+
+/* ---------- detail tables ---------- */
+function renderTable(bodyId, hdId, capId, cols, widths, rows, title, subNote){
+  $("#" + hdId).innerHTML = `${title}
+    <span class="sub">${rows.length.toLocaleString()} row${rows.length===1?"":"s"} &middot; ${esc(scopeLabel())}${subNote}</span>`;
+  const shown = rows.slice(0, ROWCAP);
+  const head = `<div class="grow hrow">${cols.map(c =>
+    `<div class="cell">${c}</div>`).join("")}</div>`;
+  const body = shown.map((r,i) => `<div class="grow ${i%2?"oddrow":""}">${
+    r.map(v => `<div class="cell" title="${esc(v)}">${esc(v) || "&mdash;"}</div>`).join("")}</div>`).join("");
+  $("#" + bodyId).innerHTML = rows.length
+    ? `<div class="grid" style="grid-template-columns:${widths}">${head}${body}</div>`
+    : `<div style="padding:14px;color:var(--muted)">Nothing to show under this filter.</div>`;
+  const cap = $("#" + capId);
+  cap.style.display = rows.length > ROWCAP ? "" : "none";
+  if (rows.length > ROWCAP) cap.textContent =
+    `Showing the first ${ROWCAP} of ${rows.length.toLocaleString()} rows — pick a location or manager to narrow.`;
+}
+
+function renderTables(sel){
+  const lmsStatuses = lmsWide ? ["Overdue","Not Started","In Progress"] : ["Overdue"];
+  const lmsRows = DATA.lmsRows
+    .filter(r => lmsStatuses.includes(r[3]) && inSel(sel, r[2]))
+    .sort((a,b) => a[2].localeCompare(b[2]) || a[0].localeCompare(b[0]))
+    .map(r => [r[0], r[1], r[2], r[3], r[4]]);
+  renderTable("lmsbody","lmshd","lmscap",
+    ["Employee","Course Title","Location","Status","Due"],
+    "minmax(130px,1.1fr) minmax(200px,2fr) minmax(100px,.9fr) 96px 86px",
+    lmsRows, "LMS courses", ` &middot; ${lmsWide?"overdue, not started &amp; in progress":"overdue only"}`);
+
+  const expRows = DATA.expRows
+    .filter(r => (!s101NCOnly || r[4] === "NC") && inSel(sel, r[2]))
+    .map(r => [r[0], r[1], r[2], r[3]]);
+  renderTable("expbody","exphd","expcap",
+    ["Employee","Job Qualification","Location","Status"],
+    "minmax(140px,1.2fr) minmax(170px,1.6fr) minmax(100px,.9fr) minmax(130px,1fr)",
+    expRows, "Safety101 expiring &amp; noncompliant",
+    ` &middot; ${s101NCOnly?"not signed off only":"incl. expiring soon"}`);
+}
+
+/* ---------- by-location chart ---------- */
+function renderChart(sel){
+  const rows = DATA.mgmtLocs
+    .filter(l => inSel(sel, l) && DATA.locAgg[l])
+    .map(l => {
+      const a = DATA.locAgg[l];
+      return {l, a,
+        lms: a.lmsTot ? (a.lmsTot - a.lmsO) / a.lmsTot : null,
+        s101: a.sN ? a.sC1 / a.sN : null};
+    })
+    .filter(r => r.s101)             // pbix filter: S101 compliance is not 0
+    .sort((a,b) => (b.lms ?? -1) - (a.lms ?? -1));
+  if (!rows.length){
+    $("#chart").innerHTML = `<div style="padding:10px;color:var(--muted)">No locations to chart under this filter.</div>`;
+    return;
+  }
+  const LBL = 168, W = 1120, PW = W - LBL - 70, ROWH = 42, TOP = 20;
+  const H = TOP + rows.length * ROWH + 8;
+  const x = v => LBL + v * PW;
+  const bench = x(DATA.benchmark);
+  let s = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img"
+    aria-label="LMS and Safety101 compliance by location">`;
+  [0,.25,.5,.75,1].forEach(g => { s += `<line x1="${x(g)}" y1="${TOP-6}" x2="${x(g)}" y2="${H-6}"
+    stroke="var(--line)" stroke-width="1"/>
+    <text x="${x(g)}" y="${TOP-9}" text-anchor="middle" font-size="10" fill="var(--muted)">${g*100}%</text>`; });
+  rows.forEach((r, i) => {
+    const y = TOP + i * ROWH;
+    const mgrs = (locMgrs[r.l] || []).join(", ");
+    const tipTxt = `<div class='t-hd'>${esc(r.l)}</div>`
+      + (mgrs ? `RM: ${esc(mgrs)}<br>` : "")
+      + `LMS: <b>${r.a.lmsTot - r.a.lmsO} of ${r.a.lmsTot}</b> not overdue (${pct(r.lms)})<br>`
+      + `Safety101: <b>${r.a.sC1} of ${r.a.sN}</b> fully signed off (${pct(r.s101)})`;
+    s += `<g class="cb" data-tip="${esc(tipTxt)}" tabindex="0">
+      <rect x="0" y="${y}" width="${W}" height="${ROWH-2}" fill="transparent"/>
+      <text x="${LBL-8}" y="${y+24}" text-anchor="end" font-size="12" font-weight="600"
+        fill="var(--ink)">${esc(r.l)}</text>`;
+    const bar = (v, off, color) => v==null ? "" :
+      `<rect x="${LBL}" y="${y+off}" width="${Math.max(1.5, v*PW)}" height="13" rx="3" fill="${color}"/>
+       <text x="${x(v)+5}" y="${y+off+11}" font-size="10.5" fill="var(--ink)"
+         font-variant-numeric="tabular-nums">${(100*v).toFixed(0)}%</text>`;
+    s += bar(r.lms, 6, "var(--lms)") + bar(r.s101, 22, "var(--s101)") + `</g>`;
+  });
+  s += `<line x1="${bench}" y1="${TOP-4}" x2="${bench}" y2="${H-6}" stroke="var(--muted)"
+    stroke-width="1.6" stroke-dasharray="5 4"/></svg>`;
+  $("#chart").innerHTML = `<div class="scroller">${s}</div>`;
+}
+
+/* ---------- controls ---------- */
+function renderControls(){
+  $("#rmsel").innerHTML =
+    `<option value="${ALL}" ${rm===ALL?"selected":""}>All Regional Managers</option>` +
+    Object.keys(DATA.managers).map(m =>
+      `<option ${m===rm?"selected":""}>${esc(m)}</option>`).join("");
+  const locs = rm === ALL ? DATA.locations : DATA.managers[rm];
+  $("#locsel").innerHTML =
+    `<option value="${ALL}" ${loc===ALL?"selected":""}>All Locations</option>` +
+    locs.map(l => `<option ${l===loc?"selected":""}>${esc(l)}</option>`).join("");
+  const chip = (txt, on, act) =>
+    `<button class="mchip ${on?"active":""}" data-act="${act}" role="tab" aria-selected="${on}">${txt}</button>`;
+  $("#lmschips").innerHTML =
+    `<label>LMS</label>` +
+    chip("Overdue only", !lmsWide, "lms-narrow") +
+    chip("+ Not started &amp; in progress", lmsWide, "lms-wide");
+  $("#s101chips").innerHTML =
+    `<label>Safety101</label>` +
+    chip("Noncompliant &amp; expiring", !s101NCOnly, "s101-all") +
+    chip("Noncompliant only", s101NCOnly, "s101-nc");
+}
+
+function render(){
+  const sel = selLocs();
+  const t = sumAgg(sel);
+  renderWatch(sel);
+  renderKpis(sel, t);
+  renderTables(sel);
+  renderChart(sel);
+}
+
+$("#gen").textContent = DATA.generated;
+$("#freshnote").innerHTML = Object.entries(DATA.fresh)
+  .map(([k,v]) => `${k} <b>${esc(v)}</b>`).join(" &middot; ");
+renderControls(); render();
+
+$("#rmsel").addEventListener("change", e => {
+  rm = e.target.value;
+  if (rm !== ALL && loc !== ALL && !DATA.managers[rm].includes(loc)) loc = ALL;
+  saveState(); renderControls(); render();
+});
+$("#locsel").addEventListener("change", e => {
+  loc = e.target.value; saveState(); render();
+});
+document.addEventListener("click", e => {
+  const b = e.target.closest(".mchip"); if (!b) return;
+  const a = b.dataset.act;
+  if (a === "lms-narrow") lmsWide = false;
+  if (a === "lms-wide") lmsWide = true;
+  if (a === "s101-all") s101NCOnly = false;
+  if (a === "s101-nc") s101NCOnly = true;
+  saveState(); renderControls(); render();
+});
+
+// Reload every 30 minutes so an open tab can never show stale data
+setInterval(() => location.reload(), 30 * 60 * 1000);
+
+// Scale the 1180px layout to ~92% of the screen; phones stay 1:1
+function pageZoom(){ return Math.max(1, 0.92 * innerWidth / 1180); }
+function applyZoom(){ document.body.style.zoom = pageZoom(); }
+applyZoom();
+window.addEventListener("resize", applyZoom);
+
+// chart tooltip (single floating element; same pattern as Labor Pulse)
+const tip = $("#tip");
+function showTip(el){
+  tip.innerHTML = el.dataset.tip;
+  const Z = pageZoom(), r = el.getBoundingClientRect(),
+        rl = r.left/Z, rt = r.top/Z, rb = r.bottom/Z, rw = r.width/Z,
+        vw = innerWidth/Z;
+  tip.style.display = "block";
+  const tw = tip.offsetWidth, th = tip.offsetHeight;
+  let x = Math.min(Math.max(8, rl + rw/2 - tw/2), vw - tw - 8);
+  let y = rt - th - 8; if (y < 66) y = rb + 8;
+  tip.style.left = x+"px"; tip.style.top = y+"px";
+}
+function hideTip(){ tip.style.display = "none"; }
+document.addEventListener("mouseover", e => { const w = e.target.closest(".cb"); if (w) showTip(w); });
+document.addEventListener("mouseout",  e => { if (e.target.closest(".cb")) hideTip(); });
+document.addEventListener("focusin",   e => { const w = e.target.closest(".cb"); if (w) showTip(w); });
+document.addEventListener("focusout",  e => { if (e.target.closest(".cb")) hideTip(); });
+window.addEventListener("scroll", hideTip, true);
+</script>

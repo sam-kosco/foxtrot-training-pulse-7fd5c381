@@ -1,0 +1,87 @@
+name: Daily Training Pulse Refresh
+
+on:
+  schedule:
+    # Both fire; the guard step lets only the run where it is 9 AM in
+    # America/New_York proceed — 9 AM Eastern year-round across DST.
+    - cron: "0 13 * * *"
+    - cron: "0 14 * * *"
+  workflow_dispatch:
+    # Always available for manual refresh from the Actions tab
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # commits the rebuilt page back to the repo
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0   # guard needs history to find today's refresh commit
+
+      - name: Daily refresh guard (9 AM Eastern, cron-delay tolerant)
+        id: guard
+        env:
+          HAVE_SECRETS: ${{ secrets.TENANT_ID }}
+        run: |
+          # No-op green until the three Graph secrets are added to this repo.
+          if [ -z "$HAVE_SECRETS" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Secrets not configured yet — skipping (page refreshes locally)."
+            exit 0
+          fi
+          # GitHub crons often fire 30-60+ min late, so never require an exact
+          # hour: a scheduled run proceeds if it's 9 AM or later Eastern and
+          # no refresh commit has landed yet today. Manual runs always proceed.
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          export TZ=America/New_York
+          H=$(date +%H); TODAY=$(date +%F)
+          LAST=$(git log -1 --grep "chore: refresh training pulse" \
+                 --format=%cd --date=format-local:%F 2>/dev/null || true)
+          if [ "$H" -lt 9 ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Before 9 AM Eastern (hour=$H) — skipping."
+          elif [ "$LAST" = "$TODAY" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Already refreshed today ($TODAY) — skipping."
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Python
+        if: steps.guard.outputs.run == 'true'
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        if: steps.guard.outputs.run == 'true'
+        run: pip install requests
+
+      - name: Fetch sources from SharePoint
+        if: steps.guard.outputs.run == 'true'
+        env:
+          TENANT_ID:     ${{ secrets.TENANT_ID }}
+          CLIENT_ID:     ${{ secrets.CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
+        run: python fetch_training_sources.py
+
+      - name: Build training pulse page
+        if: steps.guard.outputs.run == 'true'
+        env:
+          TRAIN_DATA_DIR: sources
+          TZ: America/New_York
+        run: python build_training.py
+
+      - name: Commit and push
+        if: steps.guard.outputs.run == 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add index.html training_data.json
+          git diff --cached --quiet || git commit -m "chore: refresh training pulse [$(date -u '+%Y-%m-%d %H:%M UTC')]"
+          git push
