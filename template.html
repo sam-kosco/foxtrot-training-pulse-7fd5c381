@@ -153,7 +153,9 @@ select:focus-visible{outline:2px solid var(--orange);outline-offset:1px}
     LMS courses + Safety101 qualifications overdue. O / I / C columns show each
     person&rsquo;s overdue / incomplete / completed counts per platform. It follows the
     manager/location filter, like everything else on the page.</p>
-    <p>Sources refresh on their own schedules: <span id="freshnote"></span>.</p>
+    <p>Sources refresh on their own schedules &mdash; &ldquo;Data as of&rdquo; in the header
+    is the oldest of them, so nothing on the page is staler than that:
+    <span id="freshnote"></span>.</p>
   </div>
 
   <div class="footer">Foxtrot Aviation Services Data Department</div>
@@ -393,9 +395,10 @@ function render(){
   renderChart(sel);
 }
 
-$("#gen").textContent = DATA.generated;
+$("#gen").textContent = DATA.asof;
 $("#freshnote").innerHTML = Object.entries(DATA.fresh)
-  .map(([k,v]) => `${k} <b>${esc(v)}</b>`).join(" &middot; ");
+  .map(([k,v]) => `${k} <b>${esc(v)}</b>`).join(" &middot; ")
+  + ` &middot; page built <b>${esc(DATA.generated)}</b>`;
 renderControls(); render();
 
 $("#rmsel").addEventListener("change", e => {

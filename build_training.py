@@ -218,17 +218,38 @@ def main():
           f"people matched to LMS ({fallback_hits} via first+last fallback); "
           f"{len(lms_people) - len(claimed)} LMS-only people")
 
-    # ---- Freshness
-    fresh = {}
+    # ---- Freshness: per-source last-refresh times. The header "Data as of"
+    #      shows the OLDEST of the data sources — nothing on the page is staler
+    #      than that. In CI, sources_meta.json carries SharePoint's true
+    #      lastModifiedDateTime (file mtimes there are just download times).
+    meta = {}
+    override = os.environ.get("TRAIN_DATA_DIR")
+    if override and (Path(override) / "sources_meta.json").exists():
+        raw = json.loads((Path(override) / "sources_meta.json").read_text())
+        for name, iso in raw.items():
+            if iso:
+                meta[name] = datetime.fromisoformat(
+                    iso.replace("Z", "+00:00")).astimezone()
+    times = {}
     for k in SOURCES:
-        try:
-            fresh[k] = datetime.fromtimestamp(
-                src_path(k).stat().st_mtime).strftime("%b %d %I:%M %p")
-        except OSError:
-            fresh[k] = "?"
+        name = PureWindowsPath(SOURCES[k]).name
+        if name in meta:
+            times[k] = meta[name]
+        else:
+            try:
+                times[k] = datetime.fromtimestamp(
+                    src_path(k).stat().st_mtime).astimezone()
+            except OSError:
+                times[k] = None
+    fresh = {k: (t.strftime("%b %d %I:%M %p") if t else "?")
+             for k, t in times.items()}
+    data_times = [times[k] for k in ("lms", "s101", "expiring", "empinfo") if times[k]]
+    asof = min(data_times) if data_times else datetime.now().astimezone()
+    print(f"data as of (oldest source): {asof.strftime('%b %d %I:%M %p')}")
 
     data = {
         "generated": datetime.now().strftime("%b %d, %Y %I:%M %p"),
+        "asof": asof.strftime("%b %d, %Y %I:%M %p"),
         "benchmark": 0.85,
         "managers": {m: sorted(v) for m, v in sorted(managers.items())},
         "mgmtLocs": mgmt_locs,
