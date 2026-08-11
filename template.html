@@ -28,11 +28,7 @@ h2 .sub{color:var(--muted);font-weight:600;font-size:14px}
 select{font:inherit;font-weight:600;color:var(--ink);background:var(--surface);
   border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-width:180px;max-width:280px}
 select:focus{outline:none;border-color:var(--orange)}
-.chipgrp{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.mchip{font:inherit;font-size:12.5px;font-weight:600;color:var(--ink);cursor:pointer;
-  background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:6px 14px}
-.mchip.active{background:var(--navy);color:#fff;border-color:var(--navy)}
-.mchip:focus-visible,select:focus-visible,.wh:focus-visible{outline:2px solid var(--orange);outline-offset:1px}
+select:focus-visible{outline:2px solid var(--orange);outline-offset:1px}
 .kpis{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:18px;align-items:stretch}
 .kpi{background:var(--surface);border:1px solid var(--line);border-radius:12px;
   padding:14px 18px;min-width:168px;flex:0 1 auto}
@@ -75,7 +71,6 @@ select:focus{outline:none;border-color:var(--orange)}
 .chartwrap{padding:4px 14px 14px}
 .cb{cursor:help}
 .footer{color:var(--muted);font-size:12px;margin-top:24px}
-.wh{cursor:help;text-decoration:underline dotted var(--orange) 1.5px;text-underline-offset:3px}
 #tip{position:fixed;z-index:99;background:var(--tipbg);color:var(--tiptx);border-radius:9px;
   padding:9px 12px;font-size:12.5px;line-height:1.55;max-width:290px;pointer-events:none;
   box-shadow:0 8px 24px #0006;display:none}
@@ -100,16 +95,14 @@ select:focus{outline:none;border-color:var(--orange)}
     <select id="rmsel" aria-label="Choose regional manager"></select>
     <label for="locsel">Location</label>
     <select id="locsel" aria-label="Choose location"></select>
-    <div class="chipgrp" id="lmschips" role="tablist" aria-label="LMS view"></div>
-    <div class="chipgrp" id="s101chips" role="tablist" aria-label="Safety101 view"></div>
   </div>
+
+  <div class="kpis" id="kpis"></div>
 
   <div class="card watchcard" id="watchcard">
     <div class="hd" id="watchhd"></div>
     <div class="vscroll" style="max-height:380px"><div class="scroller" id="watchbody"></div></div>
   </div>
-
-  <div class="kpis" id="kpis"></div>
 
   <div class="cols">
     <div class="half">
@@ -129,7 +122,7 @@ select:focus{outline:none;border-color:var(--orange)}
   </div>
 
   <div class="sec">Safety101 and LMS compliance by location
-    <span class="sub" id="chartsub">&middot; sorted by LMS compliance &middot; dashed line = 85% benchmark</span></div>
+    <span class="sub">&middot; sorted by LMS compliance &middot; dashed line = 85% benchmark</span></div>
   <div class="card">
     <div class="legend">
       <span><span class="sw" style="background:var(--lms)"></span>LMS compliance</span>
@@ -142,21 +135,16 @@ select:focus{outline:none;border-color:var(--orange)}
   <div class="note">
     <p><b>How to read this.</b> The web version of the Training Compliance Power BI dashboard.
     <b>LMS</b> is Paylocity LMS coursework (from the daily learner transcript);
-    <b>Safety101</b> is job-qualification sign-offs from app.safety101.com.</p>
-    <p><b>Needs attention</b> lists anyone whose noncompliant items &mdash; LMS courses in the
-    statuses picked by the LMS chip, plus Safety101 qualifications not fully signed off &mdash;
-    exceed <b>20%</b> of everything assigned to them across both systems. It follows the
-    manager/location filter and the LMS chip. Safety101 items signed off at the partial level
-    count as noncompliant here.</p>
-    <p>The <b>LMS gauge</b> is Completed &divide; (Completed + Overdue) &mdash; courses not yet
-    started or in progress don&rsquo;t count against it, exactly like the Power BI gauge. The
-    <b>Safety101 gauge</b> credits partial sign-offs as half. The by-location chart uses the
-    dashboard&rsquo;s stricter column math (LMS: anything not overdue; Safety101: fully signed
-    off only), so it won&rsquo;t match the gauges exactly. Locations with zero Safety101
-    compliance are left off the chart, matching the original.</p>
-    <p>Gauges and the chart ignore the two status chips &mdash; those only change which rows the
-    two tables and the needs-attention list show. Sources refresh on their own schedules:
-    <span id="freshnote"></span>.</p>
+    <b>Safety101</b> is job-qualification sign-offs from app.safety101.com.
+    Every item is either <b>Compliant</b> or <b>Overdue</b>.</p>
+    <p>LMS courses that are not started or still in progress don&rsquo;t count either way
+    &mdash; like walks in a batting average, they&rsquo;re left out of the math entirely.
+    Every percentage is Compliant &divide; (Compliant + Overdue). On Safety101, anything not
+    fully signed off (including partial sign-offs) is Overdue.</p>
+    <p><b>Needs attention</b> lists anyone with more than <b>20%</b> of their counted
+    LMS courses + Safety101 qualifications overdue. It follows the manager/location filter,
+    like everything else on the page.</p>
+    <p>Sources refresh on their own schedules: <span id="freshnote"></span>.</p>
   </div>
 
   <div class="footer">Foxtrot Aviation Services Data Department</div>
@@ -172,15 +160,13 @@ const pct = (v, dp=2) => v==null ? "&mdash;" : (100*v).toFixed(dp) + "%";
 const ALL = "__ALL__";
 const ROWCAP = 600, THRESH = 0.20;
 
-let rm = ALL, loc = ALL, lmsWide = false, s101NCOnly = false;
+let rm = ALL, loc = ALL;
 try{
   const s = JSON.parse(sessionStorage.getItem("tp-state") || "{}");
   if (s.rm === ALL || DATA.managers[s.rm]) rm = s.rm ?? ALL;
   if (s.loc === ALL || DATA.locations.includes(s.loc)) loc = s.loc ?? ALL;
-  lmsWide = !!s.lmsWide; s101NCOnly = !!s.s101NCOnly;
 }catch(e){}
-function saveState(){ sessionStorage.setItem("tp-state",
-  JSON.stringify({rm, loc, lmsWide, s101NCOnly})); }
+function saveState(){ sessionStorage.setItem("tp-state", JSON.stringify({rm, loc})); }
 
 // reverse map: location -> managers
 const locMgrs = {};
@@ -195,7 +181,7 @@ function selLocs(){
 const inSel = (sel, l) => !sel || sel.has(l);
 
 function sumAgg(sel){
-  const t = {lmsC:0,lmsO:0,lmsNS:0,lmsIP:0,lmsTot:0,sN:0,sSum:0,sC1:0,sNC:0,sP:0};
+  const t = {lmsC:0, lmsO:0, sC:0, sO:0};
   Object.entries(DATA.locAgg).forEach(([l, a]) => {
     if (!inSel(sel, l)) return;
     Object.keys(t).forEach(k => t[k] += a[k]);
@@ -214,12 +200,11 @@ function personRows(sel){
   const out = [];
   DATA.people.forEach(p => {
     if (sel && !p.l.some(l => sel.has(l))) return;
-    const lmsBad = p.lo + (lmsWide ? p.lns + p.lip : 0);
-    const sBad = p.snc + p.sp;
-    const total = p.lt + p.st, bad = lmsBad + sBad;
+    const total = p.lc + p.lo + p.sc + p.so;
     if (!total) return;
+    const bad = p.lo + p.so;
     const share = bad / total;
-    if (share > THRESH) out.push({p, lmsBad, sBad, total, bad, share});
+    if (share > THRESH) out.push({p, bad, total, share});
   });
   out.sort((a,b) => b.share - a.share || b.bad - a.bad);
   return out;
@@ -229,25 +214,25 @@ function renderWatch(sel){
   const rows = personRows(sel);
   $("#watchhd").innerHTML = `Needs attention
     <span class="sub">${rows.length} ${rows.length===1?"person":"people"} with &gt;20% of their
-    assigned LMS + Safety101 items noncompliant &middot; ${esc(scopeLabel())}</span>`;
+    counted LMS + Safety101 items overdue &middot; ${esc(scopeLabel())}</span>`;
   if (!rows.length){
     $("#watchbody").innerHTML =
       `<div style="padding:14px;color:var(--muted)">No one over the 20% line under this filter.</div>`;
     return;
   }
   const head = `<div class="grow hrow"><div class="cell">Employee</div><div class="cell">Job Title</div>
-    <div class="cell">Location</div><div class="cell num">LMS ${lmsWide?"overdue + not started":"overdue"}</div>
-    <div class="cell num">S101 noncompliant</div><div class="cell num">Share noncompliant</div></div>`;
+    <div class="cell">Location</div><div class="cell num">LMS overdue</div>
+    <div class="cell num">S101 overdue</div><div class="cell num">Share overdue</div></div>`;
   const body = rows.map((r,i) => `<div class="grow ${i%2?"oddrow":""}">
     <div class="cell" style="font-weight:600">${esc(r.p.n)}</div>
     <div class="cell">${esc(r.p.t) || "&mdash;"}</div>
     <div class="cell">${esc(r.p.l.join(", "))}</div>
-    <div class="cell num">${r.lmsBad} of ${r.p.lt}</div>
-    <div class="cell num">${r.sBad} of ${r.p.st}</div>
+    <div class="cell num">${r.p.lo} of ${r.p.lc + r.p.lo}</div>
+    <div class="cell num">${r.p.so} of ${r.p.sc + r.p.so}</div>
     <div class="cell num"><span class="badge over">${(100*r.share).toFixed(0)}%</span></div>
   </div>`).join("");
   $("#watchbody").innerHTML = `<div class="grid" style="min-width:820px;
-    grid-template-columns:minmax(160px,1.4fr) minmax(120px,1fr) minmax(110px,1fr) 150px 140px 150px">
+    grid-template-columns:minmax(160px,1.4fr) minmax(120px,1fr) minmax(110px,1fr) 130px 130px 140px">
     ${head}${body}</div>`;
 }
 
@@ -268,31 +253,30 @@ function gaugeSVG(v, color, label, sub){
     <div class="kpi-sub" style="margin-top:-2px">${sub}</div></div>`;
 }
 
+const share = (c, o) => (c + o) ? c / (c + o) : null;
+
 function renderKpis(sel, t){
-  const lmsG = (t.lmsC + t.lmsO) ? t.lmsC / (t.lmsC + t.lmsO) : null;
-  const sG = t.sN ? t.sSum / t.sN : null;
-  const sBadItems = t.sNC + t.sP;
   const watchN = personRows(sel).length;
   $("#kpis").innerHTML =
-    gaugeSVG(lmsG, "var(--lms)", "LMS compliance",
-      `completed vs overdue &middot; ${esc(scopeLabel())}`) +
-    gaugeSVG(sG, "var(--s101)", "Safety101 compliance",
-      `partial sign-offs count half &middot; ${esc(scopeLabel())}`) +
+    gaugeSVG(share(t.lmsC, t.lmsO), "var(--lms)", "LMS compliance",
+      `${t.lmsC.toLocaleString()} compliant &middot; ${esc(scopeLabel())}`) +
+    gaugeSVG(share(t.sC, t.sO), "var(--s101)", "Safety101 compliance",
+      `${t.sC.toLocaleString()} compliant &middot; ${esc(scopeLabel())}`) +
     `<div class="kpi"><div class="kpi-label">LMS courses overdue</div>
       <div class="kpi-val ${t.lmsO?"neg":"pos"}">${t.lmsO.toLocaleString()}</div>
-      <div class="kpi-sub">of ${t.lmsTot.toLocaleString()} assigned</div></div>
-    <div class="kpi"><div class="kpi-label">S101 items not compliant</div>
-      <div class="kpi-val ${sBadItems?"neg":"pos"}">${sBadItems.toLocaleString()}</div>
-      <div class="kpi-sub">of ${t.sN.toLocaleString()} required (${t.sP.toLocaleString()} partial)</div></div>
+      <div class="kpi-sub">of ${(t.lmsC + t.lmsO).toLocaleString()} counted</div></div>
+    <div class="kpi"><div class="kpi-label">S101 items overdue</div>
+      <div class="kpi-val ${t.sO?"neg":"pos"}">${t.sO.toLocaleString()}</div>
+      <div class="kpi-sub">of ${(t.sC + t.sO).toLocaleString()} required</div></div>
     <div class="kpi"><div class="kpi-label">People needing attention</div>
       <div class="kpi-val ${watchN?"neg":"pos"}">${watchN}</div>
       <div class="kpi-sub">over the 20% line</div></div>`;
 }
 
 /* ---------- detail tables ---------- */
-function renderTable(bodyId, hdId, capId, cols, widths, rows, title, subNote){
+function renderTable(bodyId, hdId, capId, cols, widths, rows, title){
   $("#" + hdId).innerHTML = `${title}
-    <span class="sub">${rows.length.toLocaleString()} row${rows.length===1?"":"s"} &middot; ${esc(scopeLabel())}${subNote}</span>`;
+    <span class="sub">${rows.length.toLocaleString()} row${rows.length===1?"":"s"} &middot; ${esc(scopeLabel())}</span>`;
   const shown = rows.slice(0, ROWCAP);
   const head = `<div class="grow hrow">${cols.map(c =>
     `<div class="cell">${c}</div>`).join("")}</div>`;
@@ -300,7 +284,7 @@ function renderTable(bodyId, hdId, capId, cols, widths, rows, title, subNote){
     r.map(v => `<div class="cell" title="${esc(v)}">${esc(v) || "&mdash;"}</div>`).join("")}</div>`).join("");
   $("#" + bodyId).innerHTML = rows.length
     ? `<div class="grid" style="grid-template-columns:${widths}">${head}${body}</div>`
-    : `<div style="padding:14px;color:var(--muted)">Nothing to show under this filter.</div>`;
+    : `<div style="padding:14px;color:var(--muted)">Nothing overdue under this filter.</div>`;
   const cap = $("#" + capId);
   cap.style.display = rows.length > ROWCAP ? "" : "none";
   if (rows.length > ROWCAP) cap.textContent =
@@ -308,24 +292,19 @@ function renderTable(bodyId, hdId, capId, cols, widths, rows, title, subNote){
 }
 
 function renderTables(sel){
-  const lmsStatuses = lmsWide ? ["Overdue","Not Started","In Progress"] : ["Overdue"];
   const lmsRows = DATA.lmsRows
-    .filter(r => lmsStatuses.includes(r[3]) && inSel(sel, r[2]))
-    .sort((a,b) => a[2].localeCompare(b[2]) || a[0].localeCompare(b[0]))
-    .map(r => [r[0], r[1], r[2], r[3], r[4]]);
+    .filter(r => inSel(sel, r[2]))
+    .sort((a,b) => a[2].localeCompare(b[2]) || a[0].localeCompare(b[0]));
   renderTable("lmsbody","lmshd","lmscap",
-    ["Employee","Course Title","Location","Status","Due"],
-    "minmax(130px,1.1fr) minmax(200px,2fr) minmax(100px,.9fr) 96px 86px",
-    lmsRows, "LMS courses", ` &middot; ${lmsWide?"overdue, not started &amp; in progress":"overdue only"}`);
+    ["Employee","Course Title","Location","Due"],
+    "minmax(130px,1.1fr) minmax(200px,2fr) minmax(100px,.9fr) 86px",
+    lmsRows, "Overdue LMS courses");
 
-  const expRows = DATA.expRows
-    .filter(r => (!s101NCOnly || r[4] === "NC") && inSel(sel, r[2]))
-    .map(r => [r[0], r[1], r[2], r[3]]);
+  const expRows = DATA.expRows.filter(r => inSel(sel, r[2]));
   renderTable("expbody","exphd","expcap",
-    ["Employee","Job Qualification","Location","Status"],
-    "minmax(140px,1.2fr) minmax(170px,1.6fr) minmax(100px,.9fr) minmax(130px,1fr)",
-    expRows, "Safety101 expiring &amp; noncompliant",
-    ` &middot; ${s101NCOnly?"not signed off only":"incl. expiring soon"}`);
+    ["Employee","Job Qualification","Location"],
+    "minmax(150px,1.2fr) minmax(180px,1.6fr) minmax(100px,.9fr)",
+    expRows, "Overdue Safety101 qualifications");
 }
 
 /* ---------- by-location chart ---------- */
@@ -334,9 +313,7 @@ function renderChart(sel){
     .filter(l => inSel(sel, l) && DATA.locAgg[l])
     .map(l => {
       const a = DATA.locAgg[l];
-      return {l, a,
-        lms: a.lmsTot ? (a.lmsTot - a.lmsO) / a.lmsTot : null,
-        s101: a.sN ? a.sC1 / a.sN : null};
+      return {l, a, lms: share(a.lmsC, a.lmsO), s101: share(a.sC, a.sO)};
     })
     .filter(r => r.s101)             // pbix filter: S101 compliance is not 0
     .sort((a,b) => (b.lms ?? -1) - (a.lms ?? -1));
@@ -358,8 +335,8 @@ function renderChart(sel){
     const mgrs = (locMgrs[r.l] || []).join(", ");
     const tipTxt = `<div class='t-hd'>${esc(r.l)}</div>`
       + (mgrs ? `RM: ${esc(mgrs)}<br>` : "")
-      + `LMS: <b>${r.a.lmsTot - r.a.lmsO} of ${r.a.lmsTot}</b> not overdue (${pct(r.lms)})<br>`
-      + `Safety101: <b>${r.a.sC1} of ${r.a.sN}</b> fully signed off (${pct(r.s101)})`;
+      + `LMS: <b>${r.a.lmsC} of ${r.a.lmsC + r.a.lmsO}</b> compliant (${pct(r.lms)})<br>`
+      + `Safety101: <b>${r.a.sC} of ${r.a.sC + r.a.sO}</b> compliant (${pct(r.s101)})`;
     s += `<g class="cb" data-tip="${esc(tipTxt)}" tabindex="0">
       <rect x="0" y="${y}" width="${W}" height="${ROWH-2}" fill="transparent"/>
       <text x="${LBL-8}" y="${y+24}" text-anchor="end" font-size="12" font-weight="600"
@@ -385,23 +362,13 @@ function renderControls(){
   $("#locsel").innerHTML =
     `<option value="${ALL}" ${loc===ALL?"selected":""}>All Locations</option>` +
     locs.map(l => `<option ${l===loc?"selected":""}>${esc(l)}</option>`).join("");
-  const chip = (txt, on, act) =>
-    `<button class="mchip ${on?"active":""}" data-act="${act}" role="tab" aria-selected="${on}">${txt}</button>`;
-  $("#lmschips").innerHTML =
-    `<label>LMS</label>` +
-    chip("Overdue only", !lmsWide, "lms-narrow") +
-    chip("+ Not started &amp; in progress", lmsWide, "lms-wide");
-  $("#s101chips").innerHTML =
-    `<label>Safety101</label>` +
-    chip("Noncompliant &amp; expiring", !s101NCOnly, "s101-all") +
-    chip("Noncompliant only", s101NCOnly, "s101-nc");
 }
 
 function render(){
   const sel = selLocs();
   const t = sumAgg(sel);
-  renderWatch(sel);
   renderKpis(sel, t);
+  renderWatch(sel);
   renderTables(sel);
   renderChart(sel);
 }
@@ -418,15 +385,6 @@ $("#rmsel").addEventListener("change", e => {
 });
 $("#locsel").addEventListener("change", e => {
   loc = e.target.value; saveState(); render();
-});
-document.addEventListener("click", e => {
-  const b = e.target.closest(".mchip"); if (!b) return;
-  const a = b.dataset.act;
-  if (a === "lms-narrow") lmsWide = false;
-  if (a === "lms-wide") lmsWide = true;
-  if (a === "s101-all") s101NCOnly = false;
-  if (a === "s101-nc") s101NCOnly = true;
-  saveState(); renderControls(); render();
 });
 
 // Reload every 30 minutes so an open tab can never show stale data

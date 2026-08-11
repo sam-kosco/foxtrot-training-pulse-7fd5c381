@@ -5,16 +5,12 @@ Reproduces the "Training Compliance.pbix" dashboard from its four raw sources
 the data embedded. Run with no env vars to read the synced Data Hub folder;
 set TRAIN_DATA_DIR to a folder holding the four CSVs to mimic CI.
 
-Measures replicated from the pbix data model:
-  LMS gauge   = Completed / (Completed + Overdue)          [LMS Comp]
-  S101 gauge  = SUM(Comp?) / COUNT                         [S101 Comp]
-  Chart, LMS  = rows with Status <> "Overdue" / all rows   [Management[LMS Compliance]]
-  Chart, S101 = rows with Comp? = 1 / all rows             [Management[S101 Compliance]]
-  Benchmark   = 0.85                                       [Compliance Benchmark]
-
-Intentional fix vs the pbix: the original combo chart plots
-Sum(Management[LMS Compliance]) so locations with two managers double their
-percentage; here each location's value is plotted once.
+Owner-simplified model (Aug 2026): everything is either Overdue or Compliant.
+  LMS: only Completed and Overdue rows count — Not Started / In Progress are
+       ignored entirely, like walks in a batting average.
+  Safety101: Comp? = 1 is Compliant; anything less (0 or 0.5) is Overdue.
+  All percentages everywhere = Compliant / (Compliant + Overdue).
+  Benchmark = 0.85 (pbix [Compliance Benchmark]).
 """
 
 import csv
@@ -57,7 +53,7 @@ def norm_name(s):
 
 
 def last_first_to_display(s):
-    """'Abreha, Matthew hailu' -> 'Matthew hailu Abreha' (title-cased lightly)."""
+    """'Abreha, Matthew hailu' -> 'Matthew hailu Abreha'."""
     if "," in s:
         last, first = s.split(",", 1)
         return f"{first.strip()} {last.strip()}"
@@ -77,43 +73,40 @@ def main():
         managers.setdefault(mgr, set()).add(lms_loc)
     mgmt_locs = sorted({l for locs in managers.values() for l in locs})
 
-    # ---- LMS transcript
-    lms_rows = read_csv("lms")
-    loc_agg = {}   # loc -> mutable counters (shared with S101 below)
+    # ---- Location aggregates (shared LMS + S101 counters)
+    loc_agg = {}
 
     def agg(loc):
-        return loc_agg.setdefault(loc, {
-            "lmsC": 0, "lmsO": 0, "lmsNS": 0, "lmsIP": 0, "lmsTot": 0,
-            "sN": 0, "sSum": 0.0, "sC1": 0, "sNC": 0, "sP": 0})
+        return loc_agg.setdefault(loc, {"lmsC": 0, "lmsO": 0, "sC": 0, "sO": 0})
 
-    STATUS_KEY = {"Completed": "lmsC", "Overdue": "lmsO",
-                  "Not Started": "lmsNS", "In Progress": "lmsIP"}
-    lms_detail = []          # non-Completed rows for the on-page table
-    lms_people = {}          # norm name -> {name, locs, c,o,ns,ip}
-    for r in lms_rows:
+    # ---- LMS transcript: only Completed and Overdue count
+    lms_detail = []          # Overdue rows for the on-page table
+    lms_people = {}          # norm name -> {name, locs, c, o}
+    for r in read_csv("lms"):
         emp = " ".join(r["Employee"].split())
         course = " ".join(r["Course Title"].split())
         loc = r["Location"].strip()
         status = r["Status"].strip()
         due = r.get("Due Date", "").strip()
-        if not emp or status not in STATUS_KEY:
+        if not emp or status not in ("Completed", "Overdue"):
             continue
         a = agg(loc)
-        a[STATUS_KEY[status]] += 1
-        a["lmsTot"] += 1
         p = lms_people.setdefault(norm_name(emp), {
-            "name": emp, "locs": set(), "c": 0, "o": 0, "ns": 0, "ip": 0})
+            "name": emp, "locs": set(), "c": 0, "o": 0})
         p["locs"].add(loc)
-        p[{"Completed": "c", "Overdue": "o", "Not Started": "ns",
-           "In Progress": "ip"}[status]] += 1
-        if status != "Completed":
-            lms_detail.append([emp, course, loc, status, due])
+        if status == "Completed":
+            a["lmsC"] += 1
+            p["c"] += 1
+        else:
+            a["lmsO"] += 1
+            p["o"] += 1
+            lms_detail.append([emp, course, loc, due])
 
-    # ---- Safety101 fact table
+    # ---- Safety101 fact table: Comp? = 1 compliant, anything less overdue
     emp_names = {r["Employee ID"].strip(): (r["Full Name"].strip(),
                                             r["Job Title"].strip())
                  for r in read_csv("emp")}
-    s101_people = {}         # emp id -> {locs, n, sum, c1, nc, p}
+    s101_people = {}         # emp id -> {locs, c, o}
     for r in read_csv("s101"):
         eid, loc = r["Emp ID"].strip(), r["Location"].strip()
         try:
@@ -121,31 +114,25 @@ def main():
         except ValueError:
             continue
         a = agg(loc)
-        a["sN"] += 1
-        a["sSum"] += comp
-        a["sC1"] += 1 if comp == 1 else 0
-        a["sNC"] += 1 if comp == 0 else 0
-        a["sP"] += 1 if 0 < comp < 1 else 0
-        p = s101_people.setdefault(eid, {
-            "locs": set(), "n": 0, "sum": 0.0, "c1": 0, "nc": 0, "p": 0})
+        p = s101_people.setdefault(eid, {"locs": set(), "c": 0, "o": 0})
         p["locs"].add(loc)
-        p["n"] += 1
-        p["sum"] += comp
-        p["c1"] += 1 if comp == 1 else 0
-        p["nc"] += 1 if comp == 0 else 0
-        p["p"] += 1 if 0 < comp < 1 else 0
+        if comp == 1:
+            a["sC"] += 1
+            p["c"] += 1
+        else:
+            a["sO"] += 1
+            p["o"] += 1
 
-    # ---- Expiring training (Safety101 detail table)
+    # ---- Overdue Safety101 qualifications (detail table): Never Granted/Expired only
     exp_detail = []
     for r in read_csv("expiring"):
         exp = r["Expiration Status"].strip()
-        status = ("Not Signed Off"
-                  if ("Never" in exp or "Expired" in exp) else exp)
-        key = "NC" if status == "Not Signed Off" else "C"
+        if not ("Never" in exp or "Expired" in exp):
+            continue          # future "Expires on ..." rows are compliant
         exp_detail.append([last_first_to_display(r["Employee"]),
                            r["Job Qualification"].strip(),
-                           r["Department"].strip(), status, key])
-    exp_detail.sort(key=lambda x: x[3])   # pbix sorts ascending by Status
+                           r["Department"].strip()])
+    exp_detail.sort(key=lambda x: (x[2], x[0]))
 
     # ---- Join S101 people to LMS people by name for the watchlist
     lms_by_fl = {}
@@ -165,16 +152,13 @@ def main():
                      if k not in claimed]
             if len(cands) == 1:
                 match, fallback_hits = cands[0], fallback_hits + 1
-        entry = {"n": display, "t": title,
-                 "l": sorted(sp["locs"]),
-                 "st": sp["n"], "sc1": sp["c1"], "snc": sp["nc"], "sp": sp["p"],
-                 "lt": 0, "lo": 0, "lns": 0, "lip": 0}
+        entry = {"n": display, "t": title, "l": sorted(sp["locs"]),
+                 "sc": sp["c"], "so": sp["o"], "lc": 0, "lo": 0}
         if match:
             lp = lms_people[match]
             claimed.add(match)
             entry["l"] = sorted(set(entry["l"]) | lp["locs"])
-            entry["lt"] = lp["c"] + lp["o"] + lp["ns"] + lp["ip"]
-            entry["lo"], entry["lns"], entry["lip"] = lp["o"], lp["ns"], lp["ip"]
+            entry["lc"], entry["lo"] = lp["c"], lp["o"]
         else:
             misses += 1
         people.append(entry)
@@ -182,9 +166,7 @@ def main():
         if key in claimed:
             continue
         people.append({"n": lp["name"], "t": "", "l": sorted(lp["locs"]),
-                       "st": 0, "sc1": 0, "snc": 0, "sp": 0,
-                       "lt": lp["c"] + lp["o"] + lp["ns"] + lp["ip"],
-                       "lo": lp["o"], "lns": lp["ns"], "lip": lp["ip"]})
+                       "sc": 0, "so": 0, "lc": lp["c"], "lo": lp["o"]})
     print(f"name join: {len(s101_people) - misses}/{len(s101_people)} S101 "
           f"people matched to LMS ({fallback_hits} via first+last fallback); "
           f"{len(lms_people) - len(claimed)} LMS-only people")
@@ -210,7 +192,7 @@ def main():
         "people": people,
         "fresh": {"LMS transcript": fresh["lms"],
                   "Safety101 data": fresh["s101"],
-                  "Expiring training": fresh["expiring"]},
+                  "S101 qualifications report": fresh["expiring"]},
     }
 
     payload = json.dumps(data, separators=(",", ":"))
@@ -219,8 +201,8 @@ def main():
         html.replace("/*__DATA__*/", payload), encoding="utf-8")
     (HERE / "training_data.json").write_text(payload, encoding="utf-8")
     print(f"index.html written — {len(payload):,} bytes of data, "
-          f"{len(lms_detail)} LMS detail rows, {len(exp_detail)} expiring rows, "
-          f"{len(people)} people")
+          f"{len(lms_detail)} LMS overdue rows, {len(exp_detail)} S101 overdue "
+          f"rows, {len(people)} people")
 
 
 if __name__ == "__main__":
