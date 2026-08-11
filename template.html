@@ -46,7 +46,10 @@ select:focus-visible{outline:2px solid var(--orange);outline-offset:1px}
 .card .hd .sub{color:#c7d2e2;font-weight:600}
 .watchcard .hd{background:var(--navy)}
 .scroller{overflow-x:auto}
-.vscroll{overflow-y:auto;max-height:480px}
+.vscroll{overflow:auto;max-height:480px}
+/* inside a vscroll the outer container does both axes, so the inner scroller
+   must not clip — otherwise sticky headers stick to the wrong box */
+.vscroll .scroller{overflow-x:visible}
 .grid{display:grid;min-width:560px}
 .grow{display:contents}
 .cell{padding:7px 10px;font-size:13px;border-bottom:1px solid var(--line);
