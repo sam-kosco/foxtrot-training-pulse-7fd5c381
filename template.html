@@ -275,10 +275,10 @@ function renderKpis(sel, t){
       `${t.sC.toLocaleString()} compliant &middot; ${esc(scopeLabel())}`) +
     `<div class="kpi"><div class="kpi-label">LMS courses overdue</div>
       <div class="kpi-val ${t.lmsO?"neg":"pos"}">${t.lmsO.toLocaleString()}</div>
-      <div class="kpi-sub">of ${(t.lmsC + t.lmsO).toLocaleString()} counted &middot; ${t.lmsI.toLocaleString()} incomplete</div></div>
+      <div class="kpi-sub">of ${(t.lmsC + t.lmsO).toLocaleString()} counted</div></div>
     <div class="kpi"><div class="kpi-label">S101 items overdue</div>
       <div class="kpi-val ${t.sO?"neg":"pos"}">${t.sO.toLocaleString()}</div>
-      <div class="kpi-sub">of ${(t.sC + t.sO).toLocaleString()} counted &middot; ${t.sI.toLocaleString()} incomplete (new hires)</div></div>
+      <div class="kpi-sub">of ${(t.sC + t.sO).toLocaleString()} counted</div></div>
     <div class="kpi"><div class="kpi-label">People needing attention</div>
       <div class="kpi-val ${watchN?"neg":"pos"}">${watchN}</div>
       <div class="kpi-sub">over the 20% line</div></div>`;
