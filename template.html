@@ -51,6 +51,8 @@ select:focus-visible{outline:2px solid var(--orange);outline-offset:1px}
    must not clip — otherwise sticky headers stick to the wrong box */
 .vscroll .scroller{overflow-x:visible}
 .grid{display:grid;min-width:560px}
+/* bottom tables fit their half-width card — no horizontal scrollbar */
+.half .grid{min-width:0}
 .grow{display:contents}
 .cell{padding:7px 10px;font-size:13px;border-bottom:1px solid var(--line);
   white-space:nowrap;font-variant-numeric:tabular-nums;text-align:left;background:var(--surface);
@@ -313,13 +315,13 @@ function renderTables(sel){
     .sort((a,b) => a[2].localeCompare(b[2]) || a[0].localeCompare(b[0]));
   renderTable("lmsbody","lmshd","lmscap",
     ["Employee","Course Title","Location","Due"],
-    "minmax(130px,1.1fr) minmax(180px,1.9fr) minmax(95px,.9fr) 86px",
+    "minmax(130px,1.1fr) minmax(180px,1.9fr) minmax(95px,.9fr) 72px",
     lmsRows, "Overdue LMS courses");
 
   const expRows = DATA.expRows.filter(r => inSel(sel, r[2]));
   renderTable("expbody","exphd","expcap",
     ["Employee","Job Qualification","Location","Due"],
-    "minmax(140px,1.2fr) minmax(170px,1.7fr) minmax(95px,.9fr) 86px",
+    "minmax(140px,1.2fr) minmax(170px,1.7fr) minmax(95px,.9fr) 72px",
     expRows, "Overdue Safety101 qualifications");
 }
 

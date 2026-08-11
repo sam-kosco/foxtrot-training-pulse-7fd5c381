@@ -62,6 +62,14 @@ def norm_name(s):
     return " ".join(re.sub(r"[^a-z ]", " ", s.lower()).split())
 
 
+def short_date(s):
+    """'04/08/2026' -> '04/08/26' (leaves anything unparseable untouched)."""
+    try:
+        return datetime.strptime(s, "%m/%d/%Y").strftime("%m/%d/%y")
+    except ValueError:
+        return s
+
+
 def last_first_to_display(s):
     """'Abreha, Matthew hailu' -> 'Matthew hailu Abreha'."""
     if "," in s:
@@ -133,7 +141,7 @@ def main():
         p["locs"].add(loc)
         p[state] += 1
         if state == "o":
-            lms_detail.append([emp, course, loc, due])
+            lms_detail.append([emp, course, loc, short_date(due)])
 
     # ---- Safety101 fact table: Comp? = 1 Completed; else Overdue, or
     #      Incomplete when the employee is inside the new-hire grace window
@@ -176,7 +184,7 @@ def main():
         if eid in recent_ids:
             continue          # still in the new-hire grace window — Incomplete
         hired = hire_by_id.get(eid)
-        due = ((hired + timedelta(days=NEW_HIRE_GRACE_DAYS)).strftime("%m/%d/%Y")
+        due = ((hired + timedelta(days=NEW_HIRE_GRACE_DAYS)).strftime("%m/%d/%y")
                if hired else "")
         exp_detail.append([last_first_to_display(r["Employee"]),
                            r["Job Qualification"].strip(),
