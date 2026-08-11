@@ -315,13 +315,13 @@ function renderTables(sel){
     .sort((a,b) => a[2].localeCompare(b[2]) || a[0].localeCompare(b[0]));
   renderTable("lmsbody","lmshd","lmscap",
     ["Employee","Course Title","Location","Due"],
-    "minmax(130px,1.1fr) minmax(180px,1.9fr) minmax(95px,.9fr) 72px",
+    "minmax(130px,1.1fr) minmax(180px,1.9fr) minmax(95px,.9fr) 84px",
     lmsRows, "Overdue LMS courses");
 
   const expRows = DATA.expRows.filter(r => inSel(sel, r[2]));
   renderTable("expbody","exphd","expcap",
     ["Employee","Job Qualification","Location","Due"],
-    "minmax(140px,1.2fr) minmax(170px,1.7fr) minmax(95px,.9fr) 72px",
+    "minmax(140px,1.2fr) minmax(170px,1.7fr) minmax(95px,.9fr) 84px",
     expRows, "Overdue Safety101 qualifications");
 }
 
