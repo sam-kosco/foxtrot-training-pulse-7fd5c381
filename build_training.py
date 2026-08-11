@@ -40,6 +40,10 @@ SOURCES = {
 # Locations the pbix Management query filters out of Location Management.csv
 EXCLUDE_LOCS = {"DFW AA", "MQY", "OFFCAK Akron-Canton Office", "SPMZ"}
 
+# Home-office locations dropped from the whole dashboard — ops people only.
+# Applied at ingest, so HQ folks appear in no table, graph, filter, or count.
+DASH_EXCLUDE = {"CAK HQ", "OFFCAK Akron-Canton Office"}
+
 
 def src_path(key):
     override = os.environ.get("TRAIN_DATA_DIR")
@@ -74,7 +78,7 @@ def main():
                              r["LMS Location"].strip())
         if not mgr or not lms_loc:
             continue
-        if loc in EXCLUDE_LOCS or lms_loc in EXCLUDE_LOCS:
+        if loc in EXCLUDE_LOCS or lms_loc in EXCLUDE_LOCS or lms_loc in DASH_EXCLUDE:
             continue
         managers.setdefault(mgr, set()).add(lms_loc)
     mgmt_locs = sorted({l for locs in managers.values() for l in locs})
@@ -119,7 +123,7 @@ def main():
         loc = r["Location"].strip()
         status = r["Status"].strip()
         due = r.get("Due Date", "").strip()
-        if not emp or status not in LMS_STATE:
+        if not emp or status not in LMS_STATE or loc in DASH_EXCLUDE:
             continue
         state = LMS_STATE[status]
         a = agg(loc)
@@ -140,6 +144,8 @@ def main():
     s101_people = {}         # emp id -> {locs, c, o, i}
     for r in read_csv("s101"):
         eid, loc = r["Emp ID"].strip(), r["Location"].strip()
+        if loc in DASH_EXCLUDE:
+            continue
         try:
             comp = float(r["Comp?"])
         except ValueError:
@@ -162,6 +168,8 @@ def main():
     exp_detail = []
     for r in read_csv("expiring"):
         exp = r["Expiration Status"].strip()
+        if r["Department"].strip() in DASH_EXCLUDE:
+            continue
         if not ("Never" in exp or "Expired" in exp):
             continue          # future "Expires on ..." rows are compliant
         status = ("Incomplete" if norm_eid(r["Employee ID"]) in recent_ids
