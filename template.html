@@ -105,7 +105,7 @@ select:focus-visible{outline:2px solid var(--orange);outline-offset:1px}
   </div>
 
   <div class="sec">Safety101 and LMS compliance by location
-    <span class="sub">&middot; sorted by LMS compliance &middot; dashed line = 85% benchmark</span></div>
+    <span class="sub">&middot; dashed line = 85% benchmark</span></div>
   <div class="card">
     <div class="legend">
       <span><span class="sw" style="background:var(--lms)"></span>LMS compliance</span>
@@ -333,7 +333,7 @@ function renderChart(sel){
       return {l, a, lms: share(a.lmsC, a.lmsO), s101: share(a.sC, a.sO)};
     })
     .filter(r => r.s101)             // pbix filter: S101 compliance is not 0
-    .sort((a,b) => (b.lms ?? -1) - (a.lms ?? -1));
+    .sort((a,b) => a.l.localeCompare(b.l));
   if (!rows.length){
     $("#chart").innerHTML = `<div style="padding:10px;color:var(--muted)">No locations to chart under this filter.</div>`;
     return;
