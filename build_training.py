@@ -20,7 +20,7 @@ import csv
 import json
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path, PureWindowsPath
 
 NEW_HIRE_GRACE_DAYS = 10
@@ -90,7 +90,7 @@ def main():
 
     today = datetime.now().date()
     recent_ids = set()
-    hire_dates = 0
+    hire_by_id = {}          # norm id -> hire date (for the S101 due column)
     for r in read_csv("empinfo"):
         hd = r.get("Hire Date", "").strip()
         if not hd:
@@ -99,10 +99,10 @@ def main():
             hired = datetime.strptime(hd, "%m/%d/%Y").date()
         except ValueError:
             continue
-        hire_dates += 1
+        hire_by_id[norm_eid(r["Employee Id"])] = hired
         if (today - hired).days <= NEW_HIRE_GRACE_DAYS:
             recent_ids.add(norm_eid(r["Employee Id"]))
-    print(f"hire dates: {hire_dates} employees; {len(recent_ids)} hired within "
+    print(f"hire dates: {len(hire_by_id)} employees; {len(recent_ids)} hired within "
           f"{NEW_HIRE_GRACE_DAYS} days (S101 gaps count Incomplete, not Overdue)")
 
     # ---- Location aggregates (shared LMS + S101 counters)
@@ -132,9 +132,8 @@ def main():
             "name": emp, "locs": set(), "c": 0, "o": 0, "i": 0})
         p["locs"].add(loc)
         p[state] += 1
-        if state != "c":
-            lms_detail.append([emp, course, loc,
-                               "Overdue" if state == "o" else "Incomplete", due])
+        if state == "o":
+            lms_detail.append([emp, course, loc, due])
 
     # ---- Safety101 fact table: Comp? = 1 Completed; else Overdue, or
     #      Incomplete when the employee is inside the new-hire grace window
@@ -163,8 +162,9 @@ def main():
             a["sO"] += 1
             p["o"] += 1
 
-    # ---- Safety101 qualification detail table: Never Granted/Expired only,
-    #      split Overdue vs Incomplete by the same new-hire rule
+    # ---- Overdue Safety101 qualifications (detail table): Never Granted/Expired
+    #      rows, excluding new hires still in their grace window. Due date =
+    #      hire date + grace days.
     exp_detail = []
     for r in read_csv("expiring"):
         exp = r["Expiration Status"].strip()
@@ -172,12 +172,16 @@ def main():
             continue
         if not ("Never" in exp or "Expired" in exp):
             continue          # future "Expires on ..." rows are compliant
-        status = ("Incomplete" if norm_eid(r["Employee ID"]) in recent_ids
-                  else "Overdue")
+        eid = norm_eid(r["Employee ID"])
+        if eid in recent_ids:
+            continue          # still in the new-hire grace window — Incomplete
+        hired = hire_by_id.get(eid)
+        due = ((hired + timedelta(days=NEW_HIRE_GRACE_DAYS)).strftime("%m/%d/%Y")
+               if hired else "")
         exp_detail.append([last_first_to_display(r["Employee"]),
                            r["Job Qualification"].strip(),
-                           r["Department"].strip(), status])
-    exp_detail.sort(key=lambda x: (x[3] != "Overdue", x[2], x[0]))
+                           r["Department"].strip(), due])
+    exp_detail.sort(key=lambda x: (x[2], x[0]))
 
     # ---- Join S101 people to LMS people by name for the watchlist
     lms_by_fl = {}

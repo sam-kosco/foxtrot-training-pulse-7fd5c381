@@ -308,25 +308,19 @@ function renderTable(bodyId, hdId, capId, cols, widths, rows, title, subNote = "
 }
 
 function renderTables(sel){
-  const oiSub = rows => {
-    const o = rows.filter(r => r[3] === "Overdue").length;
-    return ` &middot; ${o.toLocaleString()} overdue, ${(rows.length - o).toLocaleString()} incomplete`;
-  };
   const lmsRows = DATA.lmsRows
     .filter(r => inSel(sel, r[2]))
-    .sort((a,b) => (a[3] !== "Overdue") - (b[3] !== "Overdue")
-      || a[2].localeCompare(b[2]) || a[0].localeCompare(b[0]))
-    .map(r => [r[0], r[1], r[2], r[3], r[4]]);
+    .sort((a,b) => a[2].localeCompare(b[2]) || a[0].localeCompare(b[0]));
   renderTable("lmsbody","lmshd","lmscap",
-    ["Employee","Course Title","Location","Status","Due"],
-    "minmax(130px,1.1fr) minmax(180px,1.8fr) minmax(95px,.9fr) 92px 86px",
-    lmsRows, "LMS courses not completed", oiSub(lmsRows));
+    ["Employee","Course Title","Location","Due"],
+    "minmax(130px,1.1fr) minmax(180px,1.9fr) minmax(95px,.9fr) 86px",
+    lmsRows, "Overdue LMS courses");
 
   const expRows = DATA.expRows.filter(r => inSel(sel, r[2]));
   renderTable("expbody","exphd","expcap",
-    ["Employee","Job Qualification","Location","Status"],
-    "minmax(140px,1.2fr) minmax(170px,1.6fr) minmax(95px,.9fr) 92px",
-    expRows, "Safety101 qualifications not signed off", oiSub(expRows));
+    ["Employee","Job Qualification","Location","Due"],
+    "minmax(140px,1.2fr) minmax(170px,1.7fr) minmax(95px,.9fr) 86px",
+    expRows, "Overdue Safety101 qualifications");
 }
 
 /* ---------- by-location chart ---------- */
