@@ -5,11 +5,14 @@ Reproduces the "Training Compliance.pbix" dashboard from its four raw sources
 the data embedded. Run with no env vars to read the synced Data Hub folder;
 set TRAIN_DATA_DIR to a folder holding the four CSVs to mimic CI.
 
-Owner-simplified model (Aug 2026): everything is either Overdue or Compliant.
-  LMS: only Completed and Overdue rows count — Not Started / In Progress are
-       ignored entirely, like walks in a batting average.
-  Safety101: Comp? = 1 is Compliant; anything less (0 or 0.5) is Overdue.
-  All percentages everywhere = Compliant / (Compliant + Overdue).
+Owner model (Aug 2026): every item is Completed, Overdue, or Incomplete.
+  LMS: Completed / Overdue from the transcript; Not Started + In Progress are
+       "Incomplete".
+  Safety101: Comp? = 1 is Completed; anything less is Overdue — unless the
+       employee was hired within the last NEW_HIRE_GRACE_DAYS (hire dates from
+       Paylocity Basic Employee Info.csv), in which case it is Incomplete.
+  Every percentage = Completed / (Completed + Overdue) — Incomplete items count
+  nowhere, like walks in a batting average.
   Benchmark = 0.85 (pbix [Compliance Benchmark]).
 """
 
@@ -20,6 +23,8 @@ import re
 from datetime import datetime
 from pathlib import Path, PureWindowsPath
 
+NEW_HIRE_GRACE_DAYS = 10
+
 HERE = Path(__file__).parent
 DATA_HUB = Path(r"C:\Users\samko\Foxtrot Aviation Services\Data Hub - Documents")
 
@@ -29,6 +34,7 @@ SOURCES = {
     "s101": r"Safety101\S101 Compliance\Safety101 Data.csv",
     "expiring": r"Safety101\S101 Compliance\Foxtrot Aviation Services Entire Organization Expiring Training.csv",
     "emp": r"Safety101\S101 Compliance\Safety101 Emp Import.csv",
+    "empinfo": r"Paylocity Reports\Basic Employee Info.csv",
 }
 
 # Locations the pbix Management query filters out of Location Management.csv
@@ -73,40 +79,65 @@ def main():
         managers.setdefault(mgr, set()).add(lms_loc)
     mgmt_locs = sorted({l for locs in managers.values() for l in locs})
 
+    # ---- Hire dates: employees hired within the grace window are "Incomplete"
+    #      on Safety101 rather than Overdue
+    def norm_eid(s):
+        return s.strip().replace("A", "").lstrip("0")
+
+    today = datetime.now().date()
+    recent_ids = set()
+    hire_dates = 0
+    for r in read_csv("empinfo"):
+        hd = r.get("Hire Date", "").strip()
+        if not hd:
+            continue
+        try:
+            hired = datetime.strptime(hd, "%m/%d/%Y").date()
+        except ValueError:
+            continue
+        hire_dates += 1
+        if (today - hired).days <= NEW_HIRE_GRACE_DAYS:
+            recent_ids.add(norm_eid(r["Employee Id"]))
+    print(f"hire dates: {hire_dates} employees; {len(recent_ids)} hired within "
+          f"{NEW_HIRE_GRACE_DAYS} days (S101 gaps count Incomplete, not Overdue)")
+
     # ---- Location aggregates (shared LMS + S101 counters)
     loc_agg = {}
 
     def agg(loc):
-        return loc_agg.setdefault(loc, {"lmsC": 0, "lmsO": 0, "sC": 0, "sO": 0})
+        return loc_agg.setdefault(loc, {"lmsC": 0, "lmsO": 0, "lmsI": 0,
+                                        "sC": 0, "sO": 0, "sI": 0})
 
-    # ---- LMS transcript: only Completed and Overdue count
-    lms_detail = []          # Overdue rows for the on-page table
-    lms_people = {}          # norm name -> {name, locs, c, o}
+    # ---- LMS transcript: Completed / Overdue / Incomplete (= Not Started + In Progress)
+    lms_detail = []          # Overdue + Incomplete rows for the on-page table
+    lms_people = {}          # norm name -> {name, locs, c, o, i}
+    LMS_STATE = {"Completed": "c", "Overdue": "o",
+                 "Not Started": "i", "In Progress": "i"}
     for r in read_csv("lms"):
         emp = " ".join(r["Employee"].split())
         course = " ".join(r["Course Title"].split())
         loc = r["Location"].strip()
         status = r["Status"].strip()
         due = r.get("Due Date", "").strip()
-        if not emp or status not in ("Completed", "Overdue"):
+        if not emp or status not in LMS_STATE:
             continue
+        state = LMS_STATE[status]
         a = agg(loc)
+        a[{"c": "lmsC", "o": "lmsO", "i": "lmsI"}[state]] += 1
         p = lms_people.setdefault(norm_name(emp), {
-            "name": emp, "locs": set(), "c": 0, "o": 0})
+            "name": emp, "locs": set(), "c": 0, "o": 0, "i": 0})
         p["locs"].add(loc)
-        if status == "Completed":
-            a["lmsC"] += 1
-            p["c"] += 1
-        else:
-            a["lmsO"] += 1
-            p["o"] += 1
-            lms_detail.append([emp, course, loc, due])
+        p[state] += 1
+        if state != "c":
+            lms_detail.append([emp, course, loc,
+                               "Overdue" if state == "o" else "Incomplete", due])
 
-    # ---- Safety101 fact table: Comp? = 1 compliant, anything less overdue
+    # ---- Safety101 fact table: Comp? = 1 Completed; else Overdue, or
+    #      Incomplete when the employee is inside the new-hire grace window
     emp_names = {r["Employee ID"].strip(): (r["Full Name"].strip(),
                                             r["Job Title"].strip())
                  for r in read_csv("emp")}
-    s101_people = {}         # emp id -> {locs, c, o}
+    s101_people = {}         # emp id -> {locs, c, o, i}
     for r in read_csv("s101"):
         eid, loc = r["Emp ID"].strip(), r["Location"].strip()
         try:
@@ -114,25 +145,31 @@ def main():
         except ValueError:
             continue
         a = agg(loc)
-        p = s101_people.setdefault(eid, {"locs": set(), "c": 0, "o": 0})
+        p = s101_people.setdefault(eid, {"locs": set(), "c": 0, "o": 0, "i": 0})
         p["locs"].add(loc)
         if comp == 1:
             a["sC"] += 1
             p["c"] += 1
+        elif norm_eid(eid) in recent_ids:
+            a["sI"] += 1
+            p["i"] += 1
         else:
             a["sO"] += 1
             p["o"] += 1
 
-    # ---- Overdue Safety101 qualifications (detail table): Never Granted/Expired only
+    # ---- Safety101 qualification detail table: Never Granted/Expired only,
+    #      split Overdue vs Incomplete by the same new-hire rule
     exp_detail = []
     for r in read_csv("expiring"):
         exp = r["Expiration Status"].strip()
         if not ("Never" in exp or "Expired" in exp):
             continue          # future "Expires on ..." rows are compliant
+        status = ("Incomplete" if norm_eid(r["Employee ID"]) in recent_ids
+                  else "Overdue")
         exp_detail.append([last_first_to_display(r["Employee"]),
                            r["Job Qualification"].strip(),
-                           r["Department"].strip()])
-    exp_detail.sort(key=lambda x: (x[2], x[0]))
+                           r["Department"].strip(), status])
+    exp_detail.sort(key=lambda x: (x[3] != "Overdue", x[2], x[0]))
 
     # ---- Join S101 people to LMS people by name for the watchlist
     lms_by_fl = {}
@@ -153,12 +190,13 @@ def main():
             if len(cands) == 1:
                 match, fallback_hits = cands[0], fallback_hits + 1
         entry = {"n": display, "t": title, "l": sorted(sp["locs"]),
-                 "sc": sp["c"], "so": sp["o"], "lc": 0, "lo": 0}
+                 "sc": sp["c"], "so": sp["o"], "si": sp["i"],
+                 "lc": 0, "lo": 0, "li": 0}
         if match:
             lp = lms_people[match]
             claimed.add(match)
             entry["l"] = sorted(set(entry["l"]) | lp["locs"])
-            entry["lc"], entry["lo"] = lp["c"], lp["o"]
+            entry["lc"], entry["lo"], entry["li"] = lp["c"], lp["o"], lp["i"]
         else:
             misses += 1
         people.append(entry)
@@ -166,7 +204,8 @@ def main():
         if key in claimed:
             continue
         people.append({"n": lp["name"], "t": "", "l": sorted(lp["locs"]),
-                       "sc": 0, "so": 0, "lc": lp["c"], "lo": lp["o"]})
+                       "sc": 0, "so": 0, "si": 0,
+                       "lc": lp["c"], "lo": lp["o"], "li": lp["i"]})
     print(f"name join: {len(s101_people) - misses}/{len(s101_people)} S101 "
           f"people matched to LMS ({fallback_hits} via first+last fallback); "
           f"{len(lms_people) - len(claimed)} LMS-only people")
@@ -192,7 +231,8 @@ def main():
         "people": people,
         "fresh": {"LMS transcript": fresh["lms"],
                   "Safety101 data": fresh["s101"],
-                  "S101 qualifications report": fresh["expiring"]},
+                  "S101 qualifications report": fresh["expiring"],
+                  "Hire dates": fresh["empinfo"]},
     }
 
     payload = json.dumps(data, separators=(",", ":"))
@@ -201,7 +241,7 @@ def main():
         html.replace("/*__DATA__*/", payload), encoding="utf-8")
     (HERE / "training_data.json").write_text(payload, encoding="utf-8")
     print(f"index.html written — {len(payload):,} bytes of data, "
-          f"{len(lms_detail)} LMS overdue rows, {len(exp_detail)} S101 overdue "
+          f"{len(lms_detail)} LMS detail rows, {len(exp_detail)} S101 detail "
           f"rows, {len(people)} people")
 
 

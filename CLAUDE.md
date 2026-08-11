@@ -19,13 +19,14 @@ The repo name carries a random suffix and the page carries `noindex` because Git
 - `Safety101/S101 Compliance/Foxtrot Aviation Services Entire Organization Expiring Training.csv` — expiring/never-granted job qualifications; Department is used as Location; Status becomes "Not Signed Off" when Expiration Status contains "Never"/"Expired" (key NC), else the "Expires on …" text (key C).
 - `Safety101/S101 Compliance/Safety101 Emp Import.csv` — Employee ID → Full Name / Job Title, used only for the watchlist name join.
 
-## Calculation notes (owner-simplified model, Aug 2026)
+## Calculation notes (owner model, Aug 2026)
 
-Sam simplified the pbix's mixed definitions: **every item is either Compliant or Overdue**, and every percentage on the page is Compliant ÷ (Compliant + Overdue).
+**Every item is Completed, Overdue, or Incomplete.** Every percentage on the page is Completed ÷ (Completed + Overdue) — Incomplete items count nowhere ("like walks in a batting average").
 
-- **LMS**: only Completed and Overdue transcript rows count; Not Started / In Progress are ignored entirely ("like walks in a batting average"). So the LMS gauge still equals the pbix `[LMS Comp]` measure, and the chart now uses the same math (the pbix chart column used not-Overdue ÷ all rows — deliberately not replicated anymore).
-- **Safety101**: `Comp?` = 1 is Compliant; 0 and 0.5 (partial) are Overdue. Gauge = count(=1) ÷ count — slightly stricter than the pbix `[S101 Comp]`, which credited partials as half.
-- **Detail tables** show only overdue items: LMS Overdue courses, and Safety101 qualifications whose Expiration Status contains "Never"/"Expired" (future "Expires on …" rows are compliant and not shown). The pbix status slicers/chips were removed with the simplification.
+- **LMS**: Completed / Overdue from the transcript; Not Started + In Progress = Incomplete.
+- **Safety101**: `Comp?` = 1 is Completed; 0 and 0.5 (partial) are Overdue — **unless the employee was hired within the last 10 days** (`NEW_HIRE_GRACE_DAYS`, hire dates joined from `Paylocity Reports/Basic Employee Info.csv` by Employee Id with "A" stripped), in which case their gaps are Incomplete. An employee with no hire-date match is treated as not-recent (gaps stay Overdue).
+- **Detail tables** show non-completed items with an Overdue/Incomplete status column, overdue sorted first: LMS courses, and Safety101 qualifications whose Expiration Status contains "Never"/"Expired" (future "Expires on …" rows are compliant and not shown). The pbix status slicers/chips were removed with the simplification.
+- **Watchlist O/I/C columns** show per-person overdue/incomplete/completed counts per platform; the >20% share = (LMS O + S101 O) ÷ (LMS C+O + S101 C+O).
 - **By-location chart**: locations with S101 compliance = 0 are excluded (the pbix visual filter). Benchmark line = 0.85 (`[Compliance Benchmark]`). Intentional fix kept from v1: the pbix plots `Sum(Management[LMS Compliance])`, which doubles percentages for two-manager locations; here each location is plotted once.
 - **Needs attention watchlist** (the addition, shown under the KPIs): a person is listed when (LMS Overdue + S101 Overdue) ÷ (LMS counted + S101 required) > 20%. Follows the RM/location filter. The LMS↔Safety101 person join is by normalized name ("Last, First" flipped, letters-only): ~92% of S101 people match; unmatched people still appear with one system's counts.
 - The page force-reloads every 30 minutes; filter state persists in sessionStorage across reloads.

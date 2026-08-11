@@ -137,13 +137,19 @@ select:focus-visible{outline:2px solid var(--orange);outline-offset:1px}
     <b>LMS</b> is Paylocity LMS coursework (from the daily learner transcript);
     <b>Safety101</b> is job-qualification sign-offs from app.safety101.com.
     Every item is either <b>Compliant</b> or <b>Overdue</b>.</p>
-    <p>LMS courses that are not started or still in progress don&rsquo;t count either way
-    &mdash; like walks in a batting average, they&rsquo;re left out of the math entirely.
-    Every percentage is Compliant &divide; (Compliant + Overdue). On Safety101, anything not
-    fully signed off (including partial sign-offs) is Overdue.</p>
+    <p>Every item is <b>Completed</b>, <b>Overdue</b>, or <b>Incomplete</b> &mdash; and
+    Incomplete items don&rsquo;t count either way: like walks in a batting average,
+    they&rsquo;re left out of the math entirely. Every percentage is
+    Completed &divide; (Completed + Overdue).</p>
+    <p>On <b>LMS</b>, Incomplete means a course that&rsquo;s not started or still in progress.
+    On <b>Safety101</b>, anything not fully signed off (including partial sign-offs) is
+    Overdue &mdash; unless the employee was hired within the last <b>10 days</b> (per
+    Paylocity hire dates), in which case their gaps are Incomplete while they get
+    trained up.</p>
     <p><b>Needs attention</b> lists anyone with more than <b>20%</b> of their counted
-    LMS courses + Safety101 qualifications overdue. It follows the manager/location filter,
-    like everything else on the page.</p>
+    LMS courses + Safety101 qualifications overdue. O / I / C columns show each
+    person&rsquo;s overdue / incomplete / completed counts per platform. It follows the
+    manager/location filter, like everything else on the page.</p>
     <p>Sources refresh on their own schedules: <span id="freshnote"></span>.</p>
   </div>
 
@@ -181,7 +187,7 @@ function selLocs(){
 const inSel = (sel, l) => !sel || sel.has(l);
 
 function sumAgg(sel){
-  const t = {lmsC:0, lmsO:0, sC:0, sO:0};
+  const t = {lmsC:0, lmsO:0, lmsI:0, sC:0, sO:0, sI:0};
   Object.entries(DATA.locAgg).forEach(([l, a]) => {
     if (!inSel(sel, l)) return;
     Object.keys(t).forEach(k => t[k] += a[k]);
@@ -200,7 +206,7 @@ function personRows(sel){
   const out = [];
   DATA.people.forEach(p => {
     if (sel && !p.l.some(l => sel.has(l))) return;
-    const total = p.lc + p.lo + p.sc + p.so;
+    const total = p.lc + p.lo + p.sc + p.so;   // incompletes count nowhere
     if (!total) return;
     const bad = p.lo + p.so;
     const share = bad / total;
@@ -214,25 +220,30 @@ function renderWatch(sel){
   const rows = personRows(sel);
   $("#watchhd").innerHTML = `Needs attention
     <span class="sub">${rows.length} ${rows.length===1?"person":"people"} with &gt;20% of their
-    counted LMS + Safety101 items overdue &middot; ${esc(scopeLabel())}</span>`;
+    counted LMS + Safety101 items overdue &middot; O / I / C = overdue / incomplete / completed
+    &middot; ${esc(scopeLabel())}</span>`;
   if (!rows.length){
     $("#watchbody").innerHTML =
       `<div style="padding:14px;color:var(--muted)">No one over the 20% line under this filter.</div>`;
     return;
   }
+  const oic = (o,i,c) =>
+    `<span style="color:var(--bad);font-weight:700">${o}</span> &middot; ` +
+    `<span style="color:var(--muted)">${i}</span> &middot; ` +
+    `<span style="color:var(--good)">${c}</span>`;
   const head = `<div class="grow hrow"><div class="cell">Employee</div><div class="cell">Job Title</div>
-    <div class="cell">Location</div><div class="cell num">LMS overdue</div>
-    <div class="cell num">S101 overdue</div><div class="cell num">Share overdue</div></div>`;
+    <div class="cell">Location</div><div class="cell num">LMS O &middot; I &middot; C</div>
+    <div class="cell num">S101 O &middot; I &middot; C</div><div class="cell num">Share overdue</div></div>`;
   const body = rows.map((r,i) => `<div class="grow ${i%2?"oddrow":""}">
     <div class="cell" style="font-weight:600">${esc(r.p.n)}</div>
     <div class="cell">${esc(r.p.t) || "&mdash;"}</div>
     <div class="cell">${esc(r.p.l.join(", "))}</div>
-    <div class="cell num">${r.p.lo} of ${r.p.lc + r.p.lo}</div>
-    <div class="cell num">${r.p.so} of ${r.p.sc + r.p.so}</div>
+    <div class="cell num">${oic(r.p.lo, r.p.li, r.p.lc)}</div>
+    <div class="cell num">${oic(r.p.so, r.p.si, r.p.sc)}</div>
     <div class="cell num"><span class="badge over">${(100*r.share).toFixed(0)}%</span></div>
   </div>`).join("");
-  $("#watchbody").innerHTML = `<div class="grid" style="min-width:820px;
-    grid-template-columns:minmax(160px,1.4fr) minmax(120px,1fr) minmax(110px,1fr) 130px 130px 140px">
+  $("#watchbody").innerHTML = `<div class="grid" style="min-width:840px;
+    grid-template-columns:minmax(160px,1.4fr) minmax(120px,1fr) minmax(110px,1fr) 135px 135px 140px">
     ${head}${body}</div>`;
 }
 
@@ -264,19 +275,19 @@ function renderKpis(sel, t){
       `${t.sC.toLocaleString()} compliant &middot; ${esc(scopeLabel())}`) +
     `<div class="kpi"><div class="kpi-label">LMS courses overdue</div>
       <div class="kpi-val ${t.lmsO?"neg":"pos"}">${t.lmsO.toLocaleString()}</div>
-      <div class="kpi-sub">of ${(t.lmsC + t.lmsO).toLocaleString()} counted</div></div>
+      <div class="kpi-sub">of ${(t.lmsC + t.lmsO).toLocaleString()} counted &middot; ${t.lmsI.toLocaleString()} incomplete</div></div>
     <div class="kpi"><div class="kpi-label">S101 items overdue</div>
       <div class="kpi-val ${t.sO?"neg":"pos"}">${t.sO.toLocaleString()}</div>
-      <div class="kpi-sub">of ${(t.sC + t.sO).toLocaleString()} required</div></div>
+      <div class="kpi-sub">of ${(t.sC + t.sO).toLocaleString()} counted &middot; ${t.sI.toLocaleString()} incomplete (new hires)</div></div>
     <div class="kpi"><div class="kpi-label">People needing attention</div>
       <div class="kpi-val ${watchN?"neg":"pos"}">${watchN}</div>
       <div class="kpi-sub">over the 20% line</div></div>`;
 }
 
 /* ---------- detail tables ---------- */
-function renderTable(bodyId, hdId, capId, cols, widths, rows, title){
+function renderTable(bodyId, hdId, capId, cols, widths, rows, title, subNote = ""){
   $("#" + hdId).innerHTML = `${title}
-    <span class="sub">${rows.length.toLocaleString()} row${rows.length===1?"":"s"} &middot; ${esc(scopeLabel())}</span>`;
+    <span class="sub">${rows.length.toLocaleString()} row${rows.length===1?"":"s"}${subNote} &middot; ${esc(scopeLabel())}</span>`;
   const shown = rows.slice(0, ROWCAP);
   const head = `<div class="grow hrow">${cols.map(c =>
     `<div class="cell">${c}</div>`).join("")}</div>`;
@@ -292,19 +303,25 @@ function renderTable(bodyId, hdId, capId, cols, widths, rows, title){
 }
 
 function renderTables(sel){
+  const oiSub = rows => {
+    const o = rows.filter(r => r[3] === "Overdue").length;
+    return ` &middot; ${o.toLocaleString()} overdue, ${(rows.length - o).toLocaleString()} incomplete`;
+  };
   const lmsRows = DATA.lmsRows
     .filter(r => inSel(sel, r[2]))
-    .sort((a,b) => a[2].localeCompare(b[2]) || a[0].localeCompare(b[0]));
+    .sort((a,b) => (a[3] !== "Overdue") - (b[3] !== "Overdue")
+      || a[2].localeCompare(b[2]) || a[0].localeCompare(b[0]))
+    .map(r => [r[0], r[1], r[2], r[3], r[4]]);
   renderTable("lmsbody","lmshd","lmscap",
-    ["Employee","Course Title","Location","Due"],
-    "minmax(130px,1.1fr) minmax(200px,2fr) minmax(100px,.9fr) 86px",
-    lmsRows, "Overdue LMS courses");
+    ["Employee","Course Title","Location","Status","Due"],
+    "minmax(130px,1.1fr) minmax(180px,1.8fr) minmax(95px,.9fr) 92px 86px",
+    lmsRows, "LMS courses not completed", oiSub(lmsRows));
 
   const expRows = DATA.expRows.filter(r => inSel(sel, r[2]));
   renderTable("expbody","exphd","expcap",
-    ["Employee","Job Qualification","Location"],
-    "minmax(150px,1.2fr) minmax(180px,1.6fr) minmax(100px,.9fr)",
-    expRows, "Overdue Safety101 qualifications");
+    ["Employee","Job Qualification","Location","Status"],
+    "minmax(140px,1.2fr) minmax(170px,1.6fr) minmax(95px,.9fr) 92px",
+    expRows, "Safety101 qualifications not signed off", oiSub(expRows));
 }
 
 /* ---------- by-location chart ---------- */
