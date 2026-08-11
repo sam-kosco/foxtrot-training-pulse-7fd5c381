@@ -18,7 +18,7 @@ import json
 import os
 import re
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 HERE = Path(__file__).parent
 DATA_HUB = Path(r"C:\Users\samko\Foxtrot Aviation Services\Data Hub - Documents")
@@ -38,7 +38,7 @@ EXCLUDE_LOCS = {"DFW AA", "MQY", "OFFCAK Akron-Canton Office", "SPMZ"}
 def src_path(key):
     override = os.environ.get("TRAIN_DATA_DIR")
     if override:
-        return Path(override) / Path(SOURCES[key]).name
+        return Path(override) / PureWindowsPath(SOURCES[key]).name
     return DATA_HUB / SOURCES[key]
 
 
