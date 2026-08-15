@@ -171,7 +171,7 @@ function selLocs(){
 const inSel = (sel, l) => !sel || sel.has(l);
 
 function sumAgg(sel){
-  const t = {lmsC:0, lmsO:0, lmsI:0, sC:0, sO:0, sI:0};
+  const t = {lmsC:0, lmsO:0, lmsI:0, sC:0, sO:0, sI:0, sP:0};
   Object.entries(DATA.locAgg).forEach(([l, a]) => {
     if (!inSel(sel, l)) return;
     Object.keys(t).forEach(k => t[k] += a[k]);
@@ -249,20 +249,23 @@ function gaugeSVG(v, color, label, sub){
 }
 
 const share = (c, o) => (c + o) ? c / (c + o) : null;
+// Safety101 compliance %: Leadership I / Management Essentials partials (sP,
+// a subset of sO) still count as overdue, but earn half credit here.
+const s101share = a => (a.sC + a.sO) ? (a.sC + 0.5 * (a.sP || 0)) / (a.sC + a.sO) : null;
 
 function renderKpis(sel, t){
   const watchN = personRows(sel).length;
   $("#kpis").innerHTML =
     gaugeSVG(share(t.lmsC, t.lmsO), "var(--lms)", "LMS compliance",
       `${t.lmsC.toLocaleString()} compliant &middot; ${esc(scopeLabel())}`) +
-    gaugeSVG(share(t.sC, t.sO), "var(--s101)", "Safety101 compliance",
-      `${t.sC.toLocaleString()} compliant &middot; ${esc(scopeLabel())}`) +
+    gaugeSVG(s101share(t), "var(--s101)", "Safety101 compliance",
+      `${t.sC.toLocaleString()} compliant${t.sP ? ` &middot; ${t.sP} half-credit` : ""} &middot; ${esc(scopeLabel())}`) +
     `<div class="kpi"><div class="kpi-label">LMS courses overdue</div>
       <div class="kpi-val ${t.lmsO?"neg":"pos"}">${t.lmsO.toLocaleString()}</div>
       <div class="kpi-sub">of ${(t.lmsC + t.lmsO).toLocaleString()} counted</div></div>
     <div class="kpi"><div class="kpi-label">S101 items overdue</div>
       <div class="kpi-val ${t.sO?"neg":"pos"}">${t.sO.toLocaleString()}</div>
-      <div class="kpi-sub">of ${(t.sC + t.sO).toLocaleString()} counted</div></div>
+      <div class="kpi-sub">of ${(t.sC + t.sO).toLocaleString()} counted${t.sP ? ` &middot; ${t.sP} partial (half in %)` : ""}</div></div>
     <div class="kpi"><div class="kpi-label">People needing attention</div>
       <div class="kpi-val ${watchN?"neg":"pos"}">${watchN}</div>
       <div class="kpi-sub">over the 20% line</div></div>`;
@@ -308,7 +311,7 @@ function renderChart(sel){
     .filter(l => inSel(sel, l) && DATA.locAgg[l])
     .map(l => {
       const a = DATA.locAgg[l];
-      return {l, a, lms: share(a.lmsC, a.lmsO), s101: share(a.sC, a.sO)};
+      return {l, a, lms: share(a.lmsC, a.lmsO), s101: s101share(a)};
     })
     .filter(r => r.s101)             // pbix filter: S101 compliance is not 0
     .sort((a,b) => a.l.localeCompare(b.l));
@@ -331,7 +334,9 @@ function renderChart(sel){
     const tipTxt = `<div class='t-hd'>${esc(r.l)}</div>`
       + (mgrs ? `RM: ${esc(mgrs)}<br>` : "")
       + `LMS: <b>${r.a.lmsC} of ${r.a.lmsC + r.a.lmsO}</b> compliant (${pct(r.lms)})<br>`
-      + `Safety101: <b>${r.a.sC} of ${r.a.sC + r.a.sO}</b> compliant (${pct(r.s101)})`;
+      + `Safety101: <b>${r.a.sC} of ${r.a.sC + r.a.sO}</b> compliant`
+      + (r.a.sP ? ` (incl. ${r.a.sP} partial at half credit)` : "")
+      + ` (${pct(r.s101)})`;
     s += `<g class="cb" data-tip="${esc(tipTxt)}" tabindex="0">
       <rect x="0" y="${y}" width="${W}" height="${ROWH-2}" fill="transparent"/>
       <text x="${LBL-8}" y="${y+24}" text-anchor="end" font-size="12" font-weight="600"

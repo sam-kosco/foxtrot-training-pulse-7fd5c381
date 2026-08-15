@@ -118,7 +118,7 @@ def main():
 
     def agg(loc):
         return loc_agg.setdefault(loc, {"lmsC": 0, "lmsO": 0, "lmsI": 0,
-                                        "sC": 0, "sO": 0, "sI": 0})
+                                        "sC": 0, "sO": 0, "sI": 0, "sP": 0})
 
     # ---- LMS transcript: Completed / Overdue / Incomplete (= Not Started + In Progress)
     lms_detail = []          # Overdue + Incomplete rows for the on-page table
@@ -158,7 +158,7 @@ def main():
         except ValueError:
             continue
         a = agg(loc)
-        p = s101_people.setdefault(eid, {"locs": set(), "c": 0, "o": 0, "i": 0})
+        p = s101_people.setdefault(eid, {"locs": set(), "c": 0, "o": 0, "i": 0, "p": 0})
         p["locs"].add(loc)
         if comp == 1:
             a["sC"] += 1
@@ -169,6 +169,9 @@ def main():
         else:
             a["sO"] += 1
             p["o"] += 1
+            if comp == 0.5:      # Leadership I / Management Essentials partial —
+                a["sP"] += 1     # still overdue, but counts half in the % (below)
+                p["p"] += 1
 
     # ---- Overdue Safety101 qualifications (detail table): Never Granted/Expired
     #      rows, excluding new hires still in their grace window. Due date =
@@ -210,7 +213,7 @@ def main():
             if len(cands) == 1:
                 match, fallback_hits = cands[0], fallback_hits + 1
         entry = {"n": display, "t": title, "l": sorted(sp["locs"]),
-                 "sc": sp["c"], "so": sp["o"], "si": sp["i"],
+                 "sc": sp["c"], "so": sp["o"], "si": sp["i"], "sp": sp["p"],
                  "lc": 0, "lo": 0, "li": 0}
         if match:
             lp = lms_people[match]
@@ -224,7 +227,7 @@ def main():
         if key in claimed:
             continue
         people.append({"n": lp["name"], "t": "", "l": sorted(lp["locs"]),
-                       "sc": 0, "so": 0, "si": 0,
+                       "sc": 0, "so": 0, "si": 0, "sp": 0,
                        "lc": lp["c"], "lo": lp["o"], "li": lp["i"]})
     print(f"name join: {len(s101_people) - misses}/{len(s101_people)} S101 "
           f"people matched to LMS ({fallback_hits} via first+last fallback); "
