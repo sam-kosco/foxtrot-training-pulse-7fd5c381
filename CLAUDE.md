@@ -3,7 +3,7 @@
 **Owner:** Samuel Kosco — Data Analyst, Foxtrot Aviation Services
 **Purpose:** Read-only web replica of the `Training Compliance.pbix` dashboard (Power BI Data Sources folder) — LMS + Safety101 training compliance, plus a "Needs attention" watchlist the pbix doesn't have. Sibling of `pulse-web` (foxtrot-labor-pulse): same design system, same publishing model.
 
-The repo name carries a random suffix and the page carries `noindex` because GitHub Pages is public — treat the URL as the access control and share it only internally.
+The repo name carries a random suffix and the page carries `noindex` because the Pages site is public — treat the URL as the access control and share it only internally. Since the org migration the CODE is private (org repo); only the rendered site is public. The platform embeds this site and its JSON feeds the platform homepage stats.
 
 ## How it works
 
@@ -34,3 +34,14 @@ The repo name carries a random suffix and the page carries `noindex` because Git
 ## Local development
 
 `python build_training.py` reads the synced Data Hub folder directly. Open `index.html` — no server needed.
+
+## Org migration (2026-08-19)
+
+Canonical repo: **Foxtrot-Aviation-Services/foxtrot-training-pulse-7fd5c381** (private; the Pages
+site is public at `foxtrot-aviation-services.github.io/foxtrot-training-pulse-7fd5c381/`). The old
+`sam-kosco.github.io/foxtrot-training-pulse-7fd5c381/` URL stays live via a same-named mirror repo
+on Sam's personal account, force-synced by this repo's "Mirror to legacy
+URL" workflow (deploy key in `MIRROR_DEPLOY_KEY`). The mirror has Actions
+DISABLED — never push to it or run anything there. Retire the legacy URL
+(delete the mirror repo + mirror.yml) once the Foxtrot Platform rollout
+replaces old links.
