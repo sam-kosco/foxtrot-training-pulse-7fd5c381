@@ -88,6 +88,10 @@ select:focus-visible{outline:2px solid var(--orange);outline-offset:1px}
 }
 </style>
 
+<script>if(self!==top)document.documentElement.setAttribute("data-embedded","1")</script>
+<style>/* Inside the Foxtrot Platform the shell provides the header - hide this
+   page's own topbar to avoid the double-header (standalone visits keep it). */
+[data-embedded] header.topbar,[data-embedded] header:has(.hdr-inner){display:none!important}</style>
 <header class="topbar">
   <div class="brand">Foxtrot <span>Training Pulse</span></div>
   <div class="topmeta">Training compliance &middot; LMS + Safety101<br>Data as of <b id="gen"></b></div>
