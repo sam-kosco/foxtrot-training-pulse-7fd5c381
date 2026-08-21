@@ -24,9 +24,13 @@ from datetime import datetime, timedelta
 from pathlib import Path, PureWindowsPath
 
 NEW_HIRE_GRACE_DAYS = 10
+BADGE_SOON_DAYS = 30      # badge "Expiring" window
 
 HERE = Path(__file__).parent
-DATA_HUB = Path(r"C:\Users\samko\Foxtrot Aviation Services\Data Hub - Documents")
+# Synced Data Hub for local runs — resolves for any user's synced copy;
+# override with LOCAL_DATA_HUB if yours lives elsewhere.
+DATA_HUB = Path(os.environ.get("LOCAL_DATA_HUB")
+                or Path.home() / "Foxtrot Aviation Services" / "Data Hub - Documents")
 
 SOURCES = {
     "mgmt": r"Power BI Data Sources\Location Management.csv",
@@ -35,6 +39,7 @@ SOURCES = {
     "expiring": r"Safety101\S101 Compliance\Foxtrot Aviation Services Entire Organization Expiring Training.csv",
     "emp": r"Safety101\S101 Compliance\Safety101 Emp Import.csv",
     "empinfo": r"Paylocity Reports\Basic Employee Info.csv",
+    "badges": r"Definitive Lists\Badges.csv",
 }
 
 # Locations the pbix Management query filters out of Location Management.csv
@@ -233,6 +238,42 @@ def main():
           f"people matched to LMS ({fallback_hits} via first+last fallback); "
           f"{len(lms_people) - len(claimed)} LMS-only people")
 
+    # ---- Badges (the Credentials tab): one row per badge from the
+    #      consolidated Badges.csv. Time-based statuses are recomputed at
+    #      build time so the page tracks today's date; lifecycle statuses
+    #      (Termed / Not Badged / Deactivated) are kept as stored.
+    KEEP_STATUS = {"Termed", "Not Badged", "Deactivated"}
+    badge_rows, badge_locs = [], set()
+    for r in read_csv("badges"):
+        bname = r.get("Employee Name", "").strip()
+        if not bname:
+            continue
+        bloc = r.get("Location", "").strip()
+        stored = r.get("Status", "").strip()
+        bexp = r.get("Expiration Date", "").strip()
+        if stored in KEEP_STATUS:
+            status = stored
+        else:
+            try:
+                d = datetime.strptime(bexp, "%Y-%m-%d").date()
+                status = ("Expired" if d < today else
+                          "Expiring" if (d - today).days <= BADGE_SOON_DAYS
+                          else "Active")
+            except ValueError:
+                status = "Unknown"
+        if bloc:
+            badge_locs.add(bloc)
+        badge_rows.append([
+            r.get("Badge ID", "").strip(), r.get("Employee ID", "").strip(),
+            bname, r.get("Position", "").strip(),
+            r.get("Badge Number", "").strip(), r.get("Badge Type", "").strip(),
+            bexp, status, r.get("Returned", "").strip(), bloc,
+        ])
+    border = {"Expired": 0, "Expiring": 1, "Unknown": 2, "Active": 3,
+              "Not Badged": 4, "Termed": 5}
+    badge_rows.sort(key=lambda b: (border.get(b[7], 9), b[9], b[2]))
+    print(f"badges: {len(badge_rows)} rows across {len(badge_locs)} locations")
+
     # ---- Freshness: per-source last-refresh times. The header "Data as of"
     #      shows the OLDEST of the data sources — nothing on the page is staler
     #      than that. In CI, sources_meta.json carries SharePoint's true
@@ -258,6 +299,9 @@ def main():
                 times[k] = None
     fresh = {k: (t.strftime("%b %d %I:%M %p") if t else "?")
              for k, t in times.items()}
+    # badges are excluded from asof on purpose: the file updates on badge
+    # events, not daily, so it would drag the training "Data as of" backward.
+    # The Badges tab shows its own freshness stamp instead.
     data_times = [times[k] for k in ("lms", "s101", "expiring", "empinfo") if times[k]]
     asof = min(data_times) if data_times else datetime.now().astimezone()
     print(f"data as of (oldest source): {asof.strftime('%b %d %I:%M %p')}")
@@ -273,10 +317,15 @@ def main():
         "lmsRows": lms_detail,
         "expRows": exp_detail,
         "people": people,
+        "badges": badge_rows,
+        "badgeLocs": sorted(badge_locs),
+        "badgeSoonDays": BADGE_SOON_DAYS,
+        "badgesAsof": fresh["badges"],
         "fresh": {"LMS transcript": fresh["lms"],
                   "Safety101 data": fresh["s101"],
                   "S101 qualifications report": fresh["expiring"],
-                  "Hire dates": fresh["empinfo"]},
+                  "Hire dates": fresh["empinfo"],
+                  "Badge records": fresh["badges"]},
     }
 
     payload = json.dumps(data, separators=(",", ":"))

@@ -76,6 +76,22 @@ select:focus-visible{outline:2px solid var(--orange);outline-offset:1px}
 .chartwrap{padding:4px 14px 14px}
 .cb{cursor:help}
 .footer{color:var(--muted);font-size:12px;margin-top:24px}
+.tabs{display:flex;gap:4px;margin:2px 0 16px;border-bottom:2px solid var(--line)}
+.tab{font:inherit;font-weight:700;font-size:14px;color:var(--muted);background:none;border:none;
+  padding:9px 16px;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px}
+.tab.on{color:var(--ink);border-bottom-color:var(--orange)}
+.tab:focus-visible{outline:2px solid var(--orange);outline-offset:-2px}
+.pill{display:inline-block;font-size:11.5px;font-weight:700;border-radius:999px;padding:2px 10px}
+.pill.active{background:#e3f4ea;color:#136f42}
+.pill.expiring{background:#fdf1dc;color:#8a5a0a}
+.pill.expired{background:#fbe3e1;color:#a02622}
+.pill.termed{background:#e8ebf1;color:#3f4c63}
+.pill.notbadged{background:#eef1f5;color:#5d6b83}
+.pill.unknown{background:#f1eddf;color:#6b6244}
+.hlrow .cell{background:#fff4e5!important}
+input.search{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);
+  border-radius:8px;padding:8px 10px;min-width:220px}
+input.search:focus{outline:none;border-color:var(--orange)}
 #tip{position:fixed;z-index:99;background:var(--tipbg);color:var(--tiptx);border-radius:9px;
   padding:9px 12px;font-size:12.5px;line-height:1.55;max-width:290px;pointer-events:none;
   box-shadow:0 8px 24px #0006;display:none}
@@ -94,10 +110,16 @@ select:focus-visible{outline:2px solid var(--orange);outline-offset:1px}
 [data-embedded] header.topbar,[data-embedded] header:has(.hdr-inner){display:none!important}</style>
 <header class="topbar">
   <div class="brand">Foxtrot <span>Training and Credentials</span></div>
-  <div class="topmeta">Training compliance &middot; LMS + Safety101<br>Data as of <b id="gen"></b></div>
+  <div class="topmeta">Training compliance &middot; airport badges<br>Data as of <b id="gen"></b></div>
 </header>
 
 <div class="wrap">
+  <div class="tabs" role="tablist" aria-label="Page sections">
+    <button class="tab on" id="tab-training" role="tab" aria-selected="true">Training</button>
+    <button class="tab" id="tab-badges" role="tab" aria-selected="false">Badges</button>
+  </div>
+
+<div id="view-training">
   <h2 id="title">Training Compliance <span class="sub">&middot; LMS + Safety101</span></h2>
   <div class="controls">
     <label for="rmsel">Regional Manager</label>
@@ -141,6 +163,28 @@ select:focus-visible{outline:2px solid var(--orange);outline-offset:1px}
     </div>
   </div>
 
+</div><!-- /view-training -->
+
+<div id="view-badges" style="display:none">
+  <h2>Badge Compliance <span class="sub">&middot; airport badges by location</span></h2>
+  <div class="controls">
+    <label for="bloc">Location</label>
+    <select id="bloc" aria-label="Choose badge location"></select>
+    <label for="bstat">Status</label>
+    <select id="bstat" aria-label="Filter by badge status"></select>
+    <label for="bsearch">Search</label>
+    <input id="bsearch" class="search" type="search" placeholder="name, ID, badge number"
+      aria-label="Search badges">
+  </div>
+  <div class="kpis" id="bkpis"></div>
+  <div class="card">
+    <div class="hd" id="bhd"></div>
+    <div class="vscroll" style="max-height:560px"><div class="scroller" id="bbody"></div></div>
+    <div class="capnote" id="bcap" style="display:none"></div>
+  </div>
+  <div class="note" id="bnote"></div>
+</div><!-- /view-badges -->
+
   <div class="footer">Foxtrot Aviation Services Data Department</div>
 </div>
 <div id="tip" role="tooltip"></div>
@@ -155,12 +199,21 @@ const ALL = "__ALL__";
 const ROWCAP = 600, THRESH = 0.20;
 
 let rm = ALL, loc = ALL;
+let tab = "training", bloc = ALL, bstat = ALL, bq = "";
+// deep link: #badge/BDG-0012 opens the Badges tab with that row highlighted
+const DEEP = (location.hash.match(/^#badge\/([\w-]+)/i) || [])[1] || null;
 try{
   const s = JSON.parse(sessionStorage.getItem("tp-state") || "{}");
   if (s.rm === ALL || DATA.managers[s.rm]) rm = s.rm ?? ALL;
   if (s.loc === ALL || DATA.locations.includes(s.loc)) loc = s.loc ?? ALL;
+  if (s.tab === "badges") tab = "badges";
+  if (s.bloc === ALL || DATA.badgeLocs.includes(s.bloc)) bloc = s.bloc ?? ALL;
+  if (typeof s.bstat === "string") bstat = s.bstat;
 }catch(e){}
-function saveState(){ sessionStorage.setItem("tp-state", JSON.stringify({rm, loc})); }
+if (DEEP || location.hash === "#badges") tab = "badges";
+else if (location.hash === "#training") tab = "training";
+if (DEEP) { bloc = ALL; bstat = ALL; }   // never let a saved filter hide the linked badge
+function saveState(){ sessionStorage.setItem("tp-state", JSON.stringify({rm, loc, tab, bloc, bstat})); }
 
 // reverse map: location -> managers
 const locMgrs = {};
@@ -356,6 +409,86 @@ function renderChart(sel){
   $("#chart").innerHTML = `<div class="scroller">${s}</div>`;
 }
 
+/* ---------- badges tab ---------- */
+// badge row indexes: 0 id, 1 empId, 2 name, 3 position, 4 number, 5 type,
+//                    6 expiration (ISO), 7 status, 8 returned, 9 location
+const BSTATUSES = ["Active","Expiring","Expired","Not Badged","Termed","Unknown"];
+const PILLC = {Active:"active", Expiring:"expiring", Expired:"expired", Termed:"termed",
+  "Not Badged":"notbadged", Unknown:"unknown", Deactivated:"termed"};
+const bfmt = iso => { const m = /^(\d{4})-(\d\d)-(\d\d)$/.exec(iso);
+  return m ? `${m[2]}/${m[3]}/${m[1].slice(2)}` : (iso ? esc(iso) : "&mdash;"); };
+
+function renderBadgeControls(){
+  $("#bloc").innerHTML =
+    `<option value="${ALL}" ${bloc===ALL?"selected":""}>All Locations</option>` +
+    DATA.badgeLocs.map(l => `<option ${l===bloc?"selected":""}>${esc(l)}</option>`).join("");
+  $("#bstat").innerHTML =
+    `<option value="${ALL}" ${bstat===ALL?"selected":""}>All Statuses</option>` +
+    BSTATUSES.map(s0 => `<option ${s0===bstat?"selected":""}>${s0}</option>`).join("");
+}
+
+function renderBadges(){
+  const scope = DATA.badges.filter(b => bloc === ALL || b[9] === bloc);
+  const n = st => scope.filter(b => b[7] === st).length;
+  const label = bloc === ALL ? "all locations" : bloc;
+  const tile = (lab, v, neg, sub) => `<div class="kpi"><div class="kpi-label">${lab}</div>
+    <div class="kpi-val ${v ? (neg ? "neg" : "pos") : "pos"}">${v}</div>
+    <div class="kpi-sub">${sub}</div></div>`;
+  $("#bkpis").innerHTML =
+    `<div class="kpi"><div class="kpi-label">Badges</div>
+      <div class="kpi-val">${(scope.length - n("Not Badged") - n("Termed")).toLocaleString()}</div>
+      <div class="kpi-sub">${esc(label)}</div></div>` +
+    tile("Active", n("Active"), false, "more than " + DATA.badgeSoonDays + " days left") +
+    tile("Expiring soon", n("Expiring"), true, "within " + DATA.badgeSoonDays + " days") +
+    tile("Expired", n("Expired"), true, "past their date") +
+    tile("Not badged", n("Not Badged"), true, "personnel without a badge");
+
+  const q = bq.trim().toLowerCase();
+  const rows = scope.filter(b =>
+    (bstat === ALL || b[7] === bstat) &&
+    (!q || [b[0], b[1], b[2], b[4]].some(v => v.toLowerCase().includes(q))));
+  $("#bhd").innerHTML = `Badges <span class="sub">${rows.length.toLocaleString()}
+    row${rows.length===1?"":"s"} &middot; sorted most urgent first &middot; ${esc(label)}</span>`;
+  const showLoc = bloc === ALL;
+  const cols = ["Emp ID","Employee","Position","Badge #","Type","Expires","Status","Returned"]
+    .concat(showLoc ? ["Location"] : []);
+  const widths = "80px minmax(150px,1.5fr) minmax(95px,1fr) minmax(110px,1.1fr) " +
+    "minmax(95px,1fr) 82px 110px 84px" + (showLoc ? " 92px" : "");
+  const shown = rows.slice(0, ROWCAP);
+  const head = `<div class="grow hrow">${cols.map(c => `<div class="cell">${c}</div>`).join("")}</div>`;
+  const body = shown.map((b,i) => `<div class="grow ${i%2?"oddrow":""}${DEEP && b[0]===DEEP ? " hlrow" : ""}"
+      id="bdg-${esc(b[0])}">
+    <div class="cell">${esc(b[1]) || "&mdash;"}</div>
+    <div class="cell" style="font-weight:600" title="${esc(b[2])}">${esc(b[2])}</div>
+    <div class="cell" title="${esc(b[3])}">${esc(b[3]) || "&mdash;"}</div>
+    <div class="cell" title="${esc(b[4])}">${esc(b[4]) || "&mdash;"}</div>
+    <div class="cell" title="${esc(b[5])}">${esc(b[5]) || "&mdash;"}</div>
+    <div class="cell">${bfmt(b[6])}</div>
+    <div class="cell"><span class="pill ${PILLC[b[7]] || "unknown"}">${esc(b[7])}</span></div>
+    <div class="cell">${esc(b[8]) || "&mdash;"}</div>
+    ${showLoc ? `<div class="cell">${esc(b[9]) || "&mdash;"}</div>` : ""}</div>`).join("");
+  $("#bbody").innerHTML = rows.length
+    ? `<div class="grid" style="min-width:900px;grid-template-columns:${widths}">${head}${body}</div>`
+    : `<div style="padding:14px;color:var(--muted)">No badges match this filter.</div>`;
+  const cap = $("#bcap");
+  cap.style.display = rows.length > ROWCAP ? "" : "none";
+  if (rows.length > ROWCAP) cap.textContent =
+    `Showing the first ${ROWCAP} of ${rows.length.toLocaleString()} rows — narrow the filter.`;
+  $("#bnote").innerHTML = `<p>Badge data as of <b>${esc(DATA.badgesAsof)}</b>.
+    <b>Expiring</b> = within ${DATA.badgeSoonDays} days. Statuses are recomputed at every
+    nightly refresh; Termed badges are kept for the audit trail (Returned = physical badge
+    handed back).</p>`;
+}
+
+function applyTab(){
+  $("#view-training").style.display = tab === "training" ? "" : "none";
+  $("#view-badges").style.display = tab === "badges" ? "" : "none";
+  $("#tab-training").classList.toggle("on", tab === "training");
+  $("#tab-badges").classList.toggle("on", tab === "badges");
+  $("#tab-training").setAttribute("aria-selected", tab === "training");
+  $("#tab-badges").setAttribute("aria-selected", tab === "badges");
+}
+
 /* ---------- controls ---------- */
 function renderControls(){
   $("#rmsel").innerHTML =
@@ -379,6 +512,11 @@ function render(){
 
 $("#gen").textContent = DATA.asof;
 renderControls(); render();
+renderBadgeControls(); renderBadges(); applyTab();
+if (DEEP){
+  const el = document.getElementById("bdg-" + DEEP);
+  if (el) el.scrollIntoView({block: "center"});
+}
 
 $("#rmsel").addEventListener("change", e => {
   rm = e.target.value;
@@ -388,6 +526,15 @@ $("#rmsel").addEventListener("change", e => {
 $("#locsel").addEventListener("change", e => {
   loc = e.target.value; saveState(); render();
 });
+$("#tab-training").addEventListener("click", () => {
+  tab = "training"; history.replaceState(null, "", "#training"); saveState(); applyTab();
+});
+$("#tab-badges").addEventListener("click", () => {
+  tab = "badges"; history.replaceState(null, "", "#badges"); saveState(); applyTab();
+});
+$("#bloc").addEventListener("change", e => { bloc = e.target.value; saveState(); renderBadges(); });
+$("#bstat").addEventListener("change", e => { bstat = e.target.value; saveState(); renderBadges(); });
+$("#bsearch").addEventListener("input", e => { bq = e.target.value; renderBadges(); });
 
 // Reload every 30 minutes so an open tab can never show stale data
 setInterval(() => location.reload(), 30 * 60 * 1000);
