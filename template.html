@@ -92,6 +92,39 @@ select:focus-visible{outline:2px solid var(--orange);outline-offset:1px}
 input.search{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);
   border-radius:8px;padding:8px 10px;min-width:220px}
 input.search:focus{outline:none;border-color:var(--orange)}
+.actbar{display:flex;gap:14px;align-items:center;margin:0 0 14px}
+.btn{font:inherit;font-weight:700;border:none;border-radius:8px;padding:9px 16px;cursor:pointer}
+.btn.primary{background:var(--orange);color:#fff}
+.btn.primary:hover{filter:brightness(.94)}
+.btn.ghost{background:none;border:1px solid var(--line);color:var(--ink)}
+.btn:focus-visible{outline:2px solid var(--navy);outline-offset:1px}
+.rowact{display:inline-flex;gap:6px}
+.rowact button{font:inherit;font-size:11.5px;font-weight:700;border:1px solid var(--line);
+  background:var(--surface);border-radius:6px;padding:2px 8px;cursor:pointer;color:var(--navy2)}
+.rowact button:hover{border-color:var(--orange);color:var(--orange)}
+.rowact button.danger:hover{border-color:var(--bad);color:var(--bad)}
+#modal{position:fixed;inset:0;background:#0f223899;z-index:60;display:flex;
+  align-items:flex-start;justify-content:center;padding:7vh 14px 0}
+.mcard{background:var(--surface);border-radius:12px;width:460px;max-width:100%;
+  box-shadow:0 18px 50px #0007;max-height:84vh;overflow:auto}
+.mhd{background:var(--navy);color:#fff;padding:12px 16px;font-weight:700;font-size:15px;
+  border-radius:12px 12px 0 0;display:flex;justify-content:space-between;align-items:center;
+  position:sticky;top:0}
+.mhd .mx{background:none;border:none;color:#c7d2e2;font-size:20px;cursor:pointer;line-height:1}
+.mhd .mx:hover{color:#fff}
+.mbody{padding:16px}
+.frow{margin-bottom:12px}
+.frow label{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:4px}
+.frow input,.frow select{width:100%;font:inherit;color:var(--ink);background:var(--surface);
+  border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.frow input:focus,.frow select:focus{outline:none;border-color:var(--orange)}
+.kv2{font-size:13px;margin-bottom:12px;background:var(--rowtint);border:1px solid var(--line);
+  border-radius:8px;padding:10px 12px;line-height:1.7}
+.ferr{color:var(--bad);font-size:12.5px;font-weight:600;min-height:17px;margin-top:4px}
+.btnrow{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}
+.previewbox{background:var(--navy);color:#c7e3ff;font-family:ui-monospace,Consolas,monospace;
+  font-size:12px;padding:12px;border-radius:8px;white-space:pre-wrap;word-break:break-all;
+  max-height:240px;overflow:auto}
 #tip{position:fixed;z-index:99;background:var(--tipbg);color:var(--tiptx);border-radius:9px;
   padding:9px 12px;font-size:12.5px;line-height:1.55;max-width:290px;pointer-events:none;
   box-shadow:0 8px 24px #0006;display:none}
@@ -176,6 +209,11 @@ input.search:focus{outline:none;border-color:var(--orange)}
     <input id="bsearch" class="search" type="search" placeholder="name, ID, badge number"
       aria-label="Search badges">
   </div>
+  <div class="actbar">
+    <button class="btn primary" id="btn-new">&#65291; New Badge</button>
+    <span style="font-size:12.5px;color:var(--muted)">Renew or deactivate a badge from its
+      row in the table below.</span>
+  </div>
   <div class="kpis" id="bkpis"></div>
   <div class="card">
     <div class="hd" id="bhd"></div>
@@ -188,6 +226,7 @@ input.search:focus{outline:none;border-color:var(--orange)}
   <div class="footer">Foxtrot Aviation Services Data Department</div>
 </div>
 <div id="tip" role="tooltip"></div>
+<div id="modal" style="display:none"></div>
 
 <script>
 const DATA = /*__DATA__*/;
@@ -200,8 +239,10 @@ const ROWCAP = 600, THRESH = 0.20;
 
 let rm = ALL, loc = ALL;
 let tab = "training", bloc = ALL, bstat = ALL, bq = "";
-// deep link: #badge/BDG-0012 opens the Badges tab with that row highlighted
-const DEEP = (location.hash.match(/^#badge\/([\w-]+)/i) || [])[1] || null;
+// deep links: #badge/BDG-0012 opens the Badges tab with that row highlighted;
+// #renew/BDG-0012 additionally opens the renewal form for that badge
+const DEEPRENEW = (location.hash.match(/^#renew\/([\w-]+)/i) || [])[1] || null;
+const DEEP = (location.hash.match(/^#badge\/([\w-]+)/i) || [])[1] || DEEPRENEW;
 try{
   const s = JSON.parse(sessionStorage.getItem("tp-state") || "{}");
   if (s.rm === ALL || DATA.managers[s.rm]) rm = s.rm ?? ALL;
@@ -451,12 +492,16 @@ function renderBadges(){
     row${rows.length===1?"":"s"} &middot; sorted most urgent first &middot; ${esc(label)}</span>`;
   const showLoc = bloc === ALL;
   const cols = ["Emp ID","Employee","Position","Badge #","Type","Expires","Status","Returned"]
-    .concat(showLoc ? ["Location"] : []);
+    .concat(showLoc ? ["Location"] : []).concat(["Actions"]);
   const widths = "80px minmax(150px,1.5fr) minmax(95px,1fr) minmax(110px,1.1fr) " +
-    "minmax(95px,1fr) 82px 110px 84px" + (showLoc ? " 92px" : "");
+    "minmax(95px,1fr) 82px 110px 84px" + (showLoc ? " 92px" : "") + " 148px";
   const shown = rows.slice(0, ROWCAP);
   const head = `<div class="grow hrow">${cols.map(c => `<div class="cell">${c}</div>`).join("")}</div>`;
-  const body = shown.map((b,i) => `<div class="grow ${i%2?"oddrow":""}${DEEP && b[0]===DEEP ? " hlrow" : ""}"
+  const body = shown.map((b,i) => {
+    const acts = (b[7] === "Termed" || b[7] === "Not Badged") ? "&mdash;"
+      : `<span class="rowact"><button data-act="renew" data-bid="${esc(b[0])}">Renew</button>` +
+        `<button class="danger" data-act="deact" data-bid="${esc(b[0])}">Deact.</button></span>`;
+    return `<div class="grow ${i%2?"oddrow":""}${DEEP && b[0]===DEEP ? " hlrow" : ""}"
       id="bdg-${esc(b[0])}">
     <div class="cell">${esc(b[1]) || "&mdash;"}</div>
     <div class="cell" style="font-weight:600" title="${esc(b[2])}">${esc(b[2])}</div>
@@ -466,9 +511,10 @@ function renderBadges(){
     <div class="cell">${bfmt(b[6])}</div>
     <div class="cell"><span class="pill ${PILLC[b[7]] || "unknown"}">${esc(b[7])}</span></div>
     <div class="cell">${esc(b[8]) || "&mdash;"}</div>
-    ${showLoc ? `<div class="cell">${esc(b[9]) || "&mdash;"}</div>` : ""}</div>`).join("");
+    ${showLoc ? `<div class="cell">${esc(b[9]) || "&mdash;"}</div>` : ""}
+    <div class="cell">${acts}</div></div>`; }).join("");
   $("#bbody").innerHTML = rows.length
-    ? `<div class="grid" style="min-width:900px;grid-template-columns:${widths}">${head}${body}</div>`
+    ? `<div class="grid" style="min-width:1040px;grid-template-columns:${widths}">${head}${body}</div>`
     : `<div style="padding:14px;color:var(--muted)">No badges match this filter.</div>`;
   const cap = $("#bcap");
   cap.style.display = rows.length > ROWCAP ? "" : "none";
@@ -487,6 +533,118 @@ function applyTab(){
   $("#tab-badges").classList.toggle("on", tab === "badges");
   $("#tab-training").setAttribute("aria-selected", tab === "training");
   $("#tab-badges").setAttribute("aria-selected", tab === "badges");
+}
+
+/* ---------- badge action forms ----------
+   PREVIEW MODE: forms validate and show the exact payload that will be
+   submitted once the Power Automate save relay exists; nothing is written. */
+const badgeById = id => DATA.badges.find(b => b[0] === id);
+const TYPES = [...new Set(DATA.badges.map(b => b[5]).filter(Boolean))].sort();
+const EMP = {};
+DATA.roster.forEach(r => EMP[`${r[1]} — ${r[0]}`] = r);
+
+const modal = $("#modal");
+function closeModal(){ modal.style.display = "none"; modal.innerHTML = ""; }
+function openModal(title, bodyHTML){
+  modal.innerHTML = `<div class="mcard" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+    <div class="mhd">${esc(title)}<button class="mx" aria-label="Close">&times;</button></div>
+    <div class="mbody">${bodyHTML}</div></div>`;
+  modal.style.display = "flex";
+  modal.querySelector(".mx").onclick = closeModal;
+}
+modal.addEventListener("click", e => { if (e.target === modal) closeModal(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+
+const frow = (lab, inner) =>
+  `<div class="frow">${lab ? `<label>${lab}</label>` : ""}${inner}</div>`;
+
+function showPreview(payload){
+  modal.querySelector(".mbody").innerHTML = `
+    <div class="kv2" style="background:#e3f4ea;border-color:#bfe3cd"><b>Preview mode.</b>
+      This is exactly what will be saved once the Power Automate relay is
+      connected &mdash; nothing has been changed yet.</div>
+    <div class="previewbox">${esc(JSON.stringify(payload, null, 2))}</div>
+    <div class="btnrow"><button class="btn ghost" id="f-close">Close</button></div>`;
+  $("#f-close").onclick = closeModal;
+}
+
+function openNewBadge(){
+  openModal("New Badge", `
+    ${frow("Employee", `<input id="f-emp" list="emplist" placeholder="start typing a name&hellip;"
+        autocomplete="off">
+      <datalist id="emplist">${DATA.roster.map(r =>
+        `<option value="${esc(r[1])} — ${esc(r[0])}">`).join("")}</datalist>`)}
+    <div class="kv2" id="f-empinfo" style="display:none"></div>
+    ${frow("Badge location", `<select id="f-loc">${DATA.badgeLocs.map(l =>
+        `<option>${esc(l)}</option>`).join("")}</select>`)}
+    ${frow("Badge type", `<input id="f-type" list="typelist" placeholder="SIDA, AOA, Secured Area&hellip;">
+      <datalist id="typelist">${TYPES.map(t => `<option value="${esc(t)}">`).join("")}</datalist>`)}
+    ${frow("Badge number", `<input id="f-num" autocomplete="off">`)}
+    ${frow("Expiration date", `<input id="f-exp" type="date">`)}
+    <div class="ferr" id="f-err"></div>
+    <div class="btnrow"><button class="btn ghost" id="f-cancel">Cancel</button>
+      <button class="btn primary" id="f-save">Create badge</button></div>`);
+  const info = $("#f-empinfo");
+  $("#f-emp").addEventListener("input", e => {
+    const r = EMP[e.target.value];
+    info.style.display = r ? "" : "none";
+    if (r) info.innerHTML = `Emp ID: <b>${esc(r[0])}</b> &middot; ${esc(r[3]) || "&mdash;"}
+      &middot; home: ${esc(r[2]) || "&mdash;"}`;
+  });
+  $("#f-cancel").onclick = closeModal;
+  $("#f-save").onclick = () => {
+    const r = EMP[$("#f-emp").value], err = $("#f-err");
+    if (!r) { err.textContent = "Pick an employee from the list."; return; }
+    if (!$("#f-num").value.trim()) { err.textContent = "Enter the badge number."; return; }
+    if (!$("#f-exp").value) { err.textContent = "Pick the expiration date."; return; }
+    showPreview({action: "create", employeeId: r[0], employeeName: r[1],
+      location: $("#f-loc").value, badgeType: $("#f-type").value.trim(),
+      badgeNumber: $("#f-num").value.trim(), expiration: $("#f-exp").value,
+      requestedAt: new Date().toISOString()});
+  };
+}
+
+function openRenew(bid){
+  const b = badgeById(bid); if (!b) return;
+  openModal("Badge Renewal", `
+    <div class="kv2">${esc(b[2])} &middot; Emp ID ${esc(b[1]) || "&mdash;"}<br>
+      ${esc(b[5]) || "Badge"} <b>${esc(b[4]) || "&mdash;"}</b> &middot; ${esc(b[9]) || "&mdash;"}<br>
+      Current expiration: <b>${bfmt(b[6])}</b> &middot;
+      <span class="pill ${PILLC[b[7]] || "unknown"}">${esc(b[7])}</span></div>
+    ${frow("New expiration date", `<input id="f-exp" type="date">`)}
+    <div class="ferr" id="f-err"></div>
+    <div class="btnrow"><button class="btn ghost" id="f-cancel">Cancel</button>
+      <button class="btn primary" id="f-save">Save renewal</button></div>`);
+  $("#f-cancel").onclick = closeModal;
+  $("#f-save").onclick = () => {
+    if (!$("#f-exp").value) { $("#f-err").textContent = "Pick the new expiration date."; return; }
+    showPreview({action: "renew", badgeId: b[0], employeeId: b[1], employeeName: b[2],
+      badgeNumber: b[4], location: b[9], newExpiration: $("#f-exp").value,
+      requestedAt: new Date().toISOString()});
+  };
+}
+
+function openDeactivate(bid){
+  const b = badgeById(bid); if (!b) return;
+  openModal("Badge Deactivation", `
+    <div class="kv2">${esc(b[2])} &middot; Emp ID ${esc(b[1]) || "&mdash;"}<br>
+      ${esc(b[5]) || "Badge"} <b>${esc(b[4]) || "&mdash;"}</b> &middot; ${esc(b[9]) || "&mdash;"}<br>
+      Expiration: <b>${bfmt(b[6])}</b> &middot;
+      <span class="pill ${PILLC[b[7]] || "unknown"}">${esc(b[7])}</span></div>
+    ${frow("", `<label style="display:flex;gap:8px;align-items:center;font-size:13.5px;
+        color:var(--ink);font-weight:400">
+      <input type="checkbox" id="f-ret" style="width:auto"> Physical badge was returned</label>`)}
+    ${frow("Note (optional)", `<input id="f-note" placeholder="reason, who collected it&hellip;"
+      autocomplete="off">`)}
+    <div class="ferr" id="f-err"></div>
+    <div class="btnrow"><button class="btn ghost" id="f-cancel">Cancel</button>
+      <button class="btn primary" style="background:var(--bad)" id="f-save">Deactivate badge</button></div>`);
+  $("#f-cancel").onclick = closeModal;
+  $("#f-save").onclick = () => {
+    showPreview({action: "deactivate", badgeId: b[0], employeeId: b[1], employeeName: b[2],
+      badgeNumber: b[4], location: b[9], returned: $("#f-ret").checked,
+      note: $("#f-note").value.trim(), requestedAt: new Date().toISOString()});
+  };
 }
 
 /* ---------- controls ---------- */
@@ -517,6 +675,7 @@ if (DEEP){
   const el = document.getElementById("bdg-" + DEEP);
   if (el) el.scrollIntoView({block: "center"});
 }
+if (DEEPRENEW) openRenew(DEEPRENEW);
 
 $("#rmsel").addEventListener("change", e => {
   rm = e.target.value;
@@ -535,6 +694,13 @@ $("#tab-badges").addEventListener("click", () => {
 $("#bloc").addEventListener("change", e => { bloc = e.target.value; saveState(); renderBadges(); });
 $("#bstat").addEventListener("change", e => { bstat = e.target.value; saveState(); renderBadges(); });
 $("#bsearch").addEventListener("input", e => { bq = e.target.value; renderBadges(); });
+$("#btn-new").addEventListener("click", openNewBadge);
+$("#bbody").addEventListener("click", e => {
+  const btn = e.target.closest("button[data-act]");
+  if (!btn) return;
+  if (btn.dataset.act === "renew") openRenew(btn.dataset.bid);
+  else openDeactivate(btn.dataset.bid);
+});
 
 // Reload every 30 minutes so an open tab can never show stale data
 setInterval(() => location.reload(), 30 * 60 * 1000);

@@ -40,6 +40,7 @@ SOURCES = {
     "emp": r"Safety101\S101 Compliance\Safety101 Emp Import.csv",
     "empinfo": r"Paylocity Reports\Basic Employee Info.csv",
     "badges": r"Definitive Lists\Badges.csv",
+    "roster": r"Definitive Lists\Roster.csv",
 }
 
 # Locations the pbix Management query filters out of Location Management.csv
@@ -274,6 +275,20 @@ def main():
     badge_rows.sort(key=lambda b: (border.get(b[7], 9), b[9], b[2]))
     print(f"badges: {len(badge_rows)} rows across {len(badge_locs)} locations")
 
+    # ---- Active roster, minimal fields, for the New Badge employee picker
+    roster_min = []
+    for r in read_csv("roster"):
+        eid = r.get("Employee Id", "").strip()
+        first = (r.get("Preferred First Name", "").strip()
+                 or r.get("First Name", "").strip())
+        last = r.get("Last Name", "").strip()
+        if eid and (first or last):
+            roster_min.append([eid, f"{first} {last}".strip(),
+                               r.get("Labor Dist", "").strip(),
+                               r.get("Job Title", "").strip()])
+    roster_min.sort(key=lambda x: x[1].lower())
+    print(f"roster picker: {len(roster_min)} active employees")
+
     # ---- Freshness: per-source last-refresh times. The header "Data as of"
     #      shows the OLDEST of the data sources — nothing on the page is staler
     #      than that. In CI, sources_meta.json carries SharePoint's true
@@ -318,6 +333,7 @@ def main():
         "expRows": exp_detail,
         "people": people,
         "badges": badge_rows,
+        "roster": roster_min,
         "badgeLocs": sorted(badge_locs),
         "badgeSoonDays": BADGE_SOON_DAYS,
         "badgesAsof": fresh["badges"],

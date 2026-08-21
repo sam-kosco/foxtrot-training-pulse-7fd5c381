@@ -27,6 +27,7 @@ FILES = [
     "Safety101/S101 Compliance/Safety101 Emp Import.csv",
     "Paylocity Reports/Basic Employee Info.csv",
     "Definitive Lists/Badges.csv",
+    "Definitive Lists/Roster.csv",
 ]
 
 OUT = Path(__file__).parent / "sources"
