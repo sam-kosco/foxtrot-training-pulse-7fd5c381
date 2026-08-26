@@ -154,11 +154,32 @@ const pct = (v, dp=2) => v==null ? "&mdash;" : (100*v).toFixed(dp) + "%";
 const ALL = "__ALL__";
 const ROWCAP = 600, THRESH = 0.20;
 
+/* Platform-embed scoping: the shell passes the acting user's org-chart scope
+ * in the URL hash (#pscope={rms,locs}). The public page and the legacy
+ * mirror never carry the hash, so they stay unfiltered. When scoped: both
+ * dropdowns trim to the viewer's scope, the RM dropdown disappears entirely
+ * unless an RM sits below the viewer, and "all" means "your locations". */
+let S_MGRS = DATA.managers, S_LOCS = DATA.locations, SCOPED = false;
+(function applyScope(){
+  const m = location.hash.match(/pscope=([^&]+)/);
+  if (!m) return;
+  let sc; try { sc = JSON.parse(decodeURIComponent(m[1])); } catch(e){ return; }
+  SCOPED = true;
+  const locSet = new Set((sc.locs || []).map(x => String(x).toUpperCase()));
+  S_LOCS = DATA.locations.filter(l => locSet.has(l.toUpperCase()));
+  const rmSet = new Set((sc.rms || []).map(x => String(x).toUpperCase()));
+  S_MGRS = {};
+  Object.entries(DATA.managers).forEach(([mg, ls]) => {
+    if (rmSet.has(mg.toUpperCase()))
+      S_MGRS[mg] = ls.filter(l => locSet.has(l.toUpperCase()));
+  });
+})();
+
 let rm = ALL, loc = ALL;
 try{
   const s = JSON.parse(sessionStorage.getItem("tp-state") || "{}");
-  if (s.rm === ALL || DATA.managers[s.rm]) rm = s.rm ?? ALL;
-  if (s.loc === ALL || DATA.locations.includes(s.loc)) loc = s.loc ?? ALL;
+  if (s.rm === ALL || S_MGRS[s.rm]) rm = s.rm ?? ALL;
+  if (s.loc === ALL || S_LOCS.includes(s.loc)) loc = s.loc ?? ALL;
 }catch(e){}
 function saveState(){ sessionStorage.setItem("tp-state", JSON.stringify({rm, loc})); }
 
@@ -169,8 +190,8 @@ Object.entries(DATA.managers).forEach(([m, locs]) =>
 
 function selLocs(){
   if (loc !== ALL) return new Set([loc]);
-  if (rm !== ALL) return new Set(DATA.managers[rm]);
-  return null;                       // null = everything
+  if (rm !== ALL) return new Set(S_MGRS[rm]);
+  return SCOPED ? new Set(S_LOCS) : null;   // scoped default = your locations
 }
 const inSel = (sel, l) => !sel || sel.has(l);
 
@@ -186,7 +207,7 @@ function sumAgg(sel){
 function scopeLabel(){
   if (loc !== ALL) return loc;
   if (rm !== ALL) return rm + " locations";
-  return "all locations";
+  return SCOPED ? "your locations" : "all locations";
 }
 
 /* ---------- needs-attention watchlist ---------- */
@@ -358,11 +379,18 @@ function renderChart(sel){
 
 /* ---------- controls ---------- */
 function renderControls(){
+  const rms = Object.keys(S_MGRS);
+  // Scoped viewers only get the RM filter when an RM sits below them.
+  const showRm = !SCOPED || rms.length > 0;
+  if (!showRm) rm = ALL;
+  $("#rmsel").style.display = showRm ? "" : "none";
+  document.querySelector('label[for="rmsel"]').style.display =
+    showRm ? "" : "none";
   $("#rmsel").innerHTML =
     `<option value="${ALL}" ${rm===ALL?"selected":""}>All Regional Managers</option>` +
-    Object.keys(DATA.managers).map(m =>
+    rms.map(m =>
       `<option ${m===rm?"selected":""}>${esc(m)}</option>`).join("");
-  const locs = rm === ALL ? DATA.locations : DATA.managers[rm];
+  const locs = rm === ALL ? S_LOCS : S_MGRS[rm];
   $("#locsel").innerHTML =
     `<option value="${ALL}" ${loc===ALL?"selected":""}>All Locations</option>` +
     locs.map(l => `<option ${l===loc?"selected":""}>${esc(l)}</option>`).join("");
@@ -382,7 +410,7 @@ renderControls(); render();
 
 $("#rmsel").addEventListener("change", e => {
   rm = e.target.value;
-  if (rm !== ALL && loc !== ALL && !DATA.managers[rm].includes(loc)) loc = ALL;
+  if (rm !== ALL && loc !== ALL && !S_MGRS[rm].includes(loc)) loc = ALL;
   saveState(); renderControls(); render();
 });
 $("#locsel").addEventListener("change", e => {
