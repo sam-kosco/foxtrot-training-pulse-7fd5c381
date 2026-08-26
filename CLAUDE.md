@@ -34,17 +34,20 @@ The repo name carries a random suffix and the page carries `noindex` because the
 ## Badges (Training and Credentials)
 
 The page carries a Badges section (branch `training-and-credentials`, owner Clara Lana):
-three tabs — Training | Badges | Terminated.
+two top tabs — Training | Badges — with Active/Terminated sub-views inside Badges.
 
 - **Source of truth:** `Definitive Lists/Badges.csv` (one row per badge; built by the
-  one-time `consolidate_badges.py` migration from the old 37-tab workbook).
-- **Employee join:** by normalized Employee ID against `Paylocity Reports/Basic
-  Employee Info.csv` — supplies employee status and Labor Dist. Location is tied to
-  the badge; Labor Dist is tied to the employee. Unmatched IDs are kept and labeled
-  "Unmatched" (never guessed, never dropped) and are exported for manual lookup.
-- **Tabs:** Badges = employees whose status is Active or Leave of Absence (plus
-  unmatched); Terminated = Terminated/Retired/Deceased employees and stored Termed
-  badges. Statuses (Active / Expiring 30d / Expired) recompute at each build.
+  one-time `consolidate_badges.py` migration from the old 37-tab workbook). Manual
+  fixes (missing Employee IDs, corrections) are edited directly in that file.
+- **Employee join:** by normalized Employee ID — active employees from
+  `Definitive Lists/Current Employees.csv` (status + Labor Dist from Home Labor
+  Assignment); terminated employees from `Definitive Lists/Terminated Employees.csv`
+  (authoritative incl. IDs; a badge with no usable ID may classify by unique name
+  match against it). Location is tied to the badge; Labor Dist to the employee.
+  Unmatched records are kept and labeled (never guessed, never dropped).
+- **Sub-views:** Active badges = current employees (plus unmatched); Terminated =
+  Terminated Employees.csv matches and stored Termed badges. Statuses (Active /
+  Expiring 30d / Expired) recompute at each build.
 - **Alerts:** a terminated employee whose badge isn't marked Returned raises an alert
   (shown on the Terminated tab; emitted as `alerts` in `training_data.json` — contact
   resolved from Labor Dist via Location Management managers).

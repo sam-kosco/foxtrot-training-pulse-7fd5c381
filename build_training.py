@@ -41,6 +41,8 @@ SOURCES = {
     "empinfo": r"Paylocity Reports\Basic Employee Info.csv",
     "badges": r"Definitive Lists\Badges.csv",
     "roster": r"Definitive Lists\Roster.csv",
+    "current": r"Definitive Lists\Current Employees.csv",
+    "termedcsv": r"Definitive Lists\Terminated Employees.csv",
 }
 
 # Locations the pbix Management query filters out of Location Management.csv
@@ -106,13 +108,8 @@ def main():
     recent_ids = set()
     hire_by_id = {}          # norm id -> hire date (for the S101 due column)
     alias_by_eid = {}        # norm id -> {normalized "first last"} incl. preferred name
-    emp_status = {}          # norm id -> Employee Status Description (badge join)
-    emp_labor = {}           # norm id -> Labor Dist Description (badge join)
     for r in read_csv("empinfo"):
         nid = norm_eid(r["Employee Id"])
-        if nid:
-            emp_status[nid] = r.get("Employee Status Description", "").strip()
-            emp_labor[nid] = r.get("Labor Dist Description", "").strip()
         last = r.get("Last Name", "").strip()
         if last:
             # Both legal and preferred first names, so an LMS row filed under a
@@ -267,14 +264,33 @@ def main():
     #      build time so the page tracks today's date; lifecycle statuses
     #      (Termed / Not Badged / Deactivated) are kept as stored.
     KEEP_STATUS = {"Termed", "Not Badged", "Deactivated"}
-    # Employees whose status puts their badges on the Terminated tab. Leave
-    # of Absence deliberately stays on the main list - not active, not gone.
     TERM_GROUP = {"Terminated", "Retired", "Deceased"}
     # labor dist -> managers (from Location Management) = who gets contacted
     loc_mgrs = {}
     for mgr, locs in managers.items():
         for l in locs:
             loc_mgrs.setdefault(l, []).append(mgr)
+    # Active employees: Current Employees.csv (id, status, Home Labor
+    # Assignment). Terminated employees: Terminated Employees.csv - the
+    # source of truth for the terminated list, including Employee IDs.
+    cur_emp = {}
+    for r in read_csv("current"):
+        cid = norm_eid(r.get("Employee Id", ""))
+        if cid:
+            cur_emp[cid] = (r.get("Status", "").strip() or "Active",
+                            r.get("Home Labor Assignment", "").strip())
+    term_emp, term_names = {}, {}
+    for r in read_csv("termedcsv"):
+        tid = norm_eid(r.get("Employee Id", ""))
+        if not tid:
+            continue
+        term_emp[tid] = r.get("Labor Dist Description", "").strip()
+        tlast = r.get("Last Name", "").strip()
+        for fn in (r.get("First Name", ""), r.get("Preferred First Name", "")):
+            if fn.strip() and tlast:
+                key = norm_name(f"{fn} {tlast}")
+                term_names[key] = (None if key in term_names
+                                   and term_names[key] != tid else tid)
     badge_rows, badge_locs, badge_alerts = [], set(), []
     for r in read_csv("badges"):
         bname = r.get("Employee Name", "").strip()
@@ -295,17 +311,30 @@ def main():
                 status = "Unknown"
         if bloc:
             badge_locs.add(bloc)
-        # employee join: Basic Employee Info by normalized Employee ID.
-        # Unknown IDs are kept and labeled Unmatched - never guessed, never
-        # dropped (they are listed for manual lookup instead).
+        # employee join, by normalized Employee ID: Current Employees first
+        # (active list), then Terminated Employees. A badge with no usable ID
+        # gets one last chance against the terminated list BY UNIQUE NAME -
+        # that list is authoritative incl. IDs, so the match also supplies
+        # the displayed ID. Everything else stays Unmatched for Clara's
+        # manual fix in Badges.csv - never guessed, never dropped.
         nid = norm_eid(r.get("Employee ID", ""))
-        es = emp_status.get(nid, "Unmatched") if nid else "Unmatched"
-        labor = emp_labor.get(nid, "") if nid else ""
+        shown_eid = r.get("Employee ID", "").strip()
+        if nid and nid in cur_emp:
+            es, labor = cur_emp[nid]
+        elif nid and nid in term_emp:
+            es, labor = "Terminated", term_emp[nid]
+        else:
+            tmatch = term_names.get(norm_name(bname))
+            if tmatch:
+                es, labor = "Terminated", term_emp[tmatch]
+                shown_eid = shown_eid or tmatch
+            else:
+                es, labor = "Unmatched", ""
         bid = r.get("Badge ID", "").strip()
         num = r.get("Badge Number", "").strip()
         returned = r.get("Returned", "").strip()
         badge_rows.append([
-            bid, r.get("Employee ID", "").strip(), bname,
+            bid, shown_eid, bname,
             r.get("Position", "").strip(), num, r.get("Badge Type", "").strip(),
             bexp, status, returned, bloc, labor, es,
         ])

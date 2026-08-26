@@ -81,6 +81,12 @@ select:focus-visible{outline:2px solid var(--orange);outline-offset:1px}
   padding:9px 16px;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px}
 .tab.on{color:var(--ink);border-bottom-color:var(--orange)}
 .tab:focus-visible{outline:2px solid var(--orange);outline-offset:-2px}
+.subtabs{display:flex;gap:8px;margin:12px 0 14px}
+.stab{font:inherit;font-weight:700;font-size:13px;border:1px solid var(--line);
+  background:var(--surface);color:var(--muted);border-radius:999px;padding:6px 16px;cursor:pointer}
+.stab.on{background:var(--navy);border-color:var(--navy);color:#fff}
+.stab:focus-visible{outline:2px solid var(--orange);outline-offset:1px}
+.stab .pill{margin-left:6px}
 .pill{display:inline-block;font-size:11.5px;font-weight:700;border-radius:999px;padding:2px 10px}
 .pill.active{background:#e3f4ea;color:#136f42}
 .pill.expiring{background:#fdf1dc;color:#8a5a0a}
@@ -150,7 +156,6 @@ input.search:focus{outline:none;border-color:var(--orange)}
   <div class="tabs" role="tablist" aria-label="Page sections">
     <button class="tab on" id="tab-training" role="tab" aria-selected="true">Training</button>
     <button class="tab" id="tab-badges" role="tab" aria-selected="false">Badges</button>
-    <button class="tab" id="tab-termed" role="tab" aria-selected="false">Terminated</button>
   </div>
 
 <div id="view-training">
@@ -201,6 +206,10 @@ input.search:focus{outline:none;border-color:var(--orange)}
 
 <div id="view-badges" style="display:none">
   <h2 id="btitle">Badge Compliance <span class="sub">&middot; airport badges by location</span></h2>
+  <div class="subtabs" role="tablist" aria-label="Badge views">
+    <button class="stab on" id="sub-active" role="tab" aria-selected="true">Active badges</button>
+    <button class="stab" id="sub-termed" role="tab" aria-selected="false">Terminated</button>
+  </div>
   <div class="controls">
     <label for="bloc">Location</label>
     <select id="bloc" aria-label="Choose badge location"></select>
@@ -243,7 +252,7 @@ const ALL = "__ALL__";
 const ROWCAP = 600, THRESH = 0.20;
 
 let rm = ALL, loc = ALL;
-let tab = "training", bloc = ALL, bstat = ALL, bq = "";
+let tab = "training", bview = "active", bloc = ALL, bstat = ALL, bq = "";
 // deep links: #badge/BDG-0012 opens the Badges tab with that row highlighted;
 // #renew/BDG-0012 additionally opens the renewal form for that badge
 const DEEPRENEW = (location.hash.match(/^#renew\/([\w-]+)/i) || [])[1] || null;
@@ -252,15 +261,22 @@ try{
   const s = JSON.parse(sessionStorage.getItem("tp-state") || "{}");
   if (s.rm === ALL || DATA.managers[s.rm]) rm = s.rm ?? ALL;
   if (s.loc === ALL || DATA.locations.includes(s.loc)) loc = s.loc ?? ALL;
-  if (s.tab === "badges" || s.tab === "termed") tab = s.tab;
+  if (s.tab === "badges") tab = "badges";
+  if (s.bview === "termed") bview = "termed";
   if (s.bloc === ALL || DATA.badgeLocs.includes(s.bloc)) bloc = s.bloc ?? ALL;
   if (typeof s.bstat === "string") bstat = s.bstat;
 }catch(e){}
 if (DEEP || location.hash === "#badges") tab = "badges";
-else if (location.hash === "#termed") tab = "termed";
+else if (location.hash === "#termed") { tab = "badges"; bview = "termed"; }
 else if (location.hash === "#training") tab = "training";
-if (DEEP) { bloc = ALL; bstat = ALL; }   // never let a saved filter hide the linked badge
-function saveState(){ sessionStorage.setItem("tp-state", JSON.stringify({rm, loc, tab, bloc, bstat})); }
+if (DEEP) {   // never let a saved filter or the wrong sub-view hide the linked badge
+  bloc = ALL; bstat = ALL;
+  const d = DATA.badges.find(b => b[0] === DEEP);
+  bview = d && (["Terminated","Retired","Deceased"].includes(d[11]) || d[7] === "Termed")
+    ? "termed" : "active";
+}
+function saveState(){ sessionStorage.setItem("tp-state",
+  JSON.stringify({rm, loc, tab, bview, bloc, bstat})); }
 
 // reverse map: location -> managers
 const locMgrs = {};
@@ -459,7 +475,7 @@ function renderChart(sel){
 /* ---------- badges tab ---------- */
 // badge row indexes: 0 id, 1 empId, 2 name, 3 position, 4 number, 5 type,
 //                    6 expiration (ISO), 7 status, 8 returned, 9 location
-const BSTATUSES = ["Active","Expiring","Expired","Not Badged","Termed","Unknown"];
+const BSTATUSES = ["Active","Expiring","Expired","Not Badged","Unknown"];
 const PILLC = {Active:"active", Expiring:"expiring", Expired:"expired", Termed:"termed",
   "Not Badged":"notbadged", Unknown:"unknown", Deactivated:"termed"};
 // badge row: [10] = employee Labor Dist, [11] = employee status from Basic
@@ -479,7 +495,7 @@ function renderBadgeControls(){
 }
 
 function renderBadges(){
-  const termed = tab === "termed";
+  const termed = bview === "termed";
   const scope = DATA.badges.filter(b => (bloc === ALL || b[9] === bloc)
     && (termed ? isTermRow(b) : !isTermRow(b)));
   const n = st => scope.filter(b => b[7] === st).length;
@@ -582,25 +598,30 @@ function renderBadges(){
   if (rows.length > ROWCAP) cap.textContent =
     `Showing the first ${ROWCAP} of ${rows.length.toLocaleString()} rows — narrow the filter.`;
   $("#bnote").innerHTML = termed
-    ? `<p>Employees whose status in Basic Employee Info is Terminated, Retired, or
-      Deceased, plus badges recorded as Termed. <b>Deactivating</b> a badge here requires
-      marking the physical badge returned and naming who received it. Employees on
-      Leave of Absence stay on the main Badges tab.</p>`
+    ? `<p>Source of truth: <b>Terminated Employees.csv</b> (Definitive Lists), joined by
+      Employee ID or unique name, plus badges recorded as Termed. <b>Deactivating</b> a
+      badge here requires marking the physical badge returned and naming who received
+      it.</p>`
     : `<p>Badge data as of <b>${esc(DATA.badgesAsof)}</b>.
-      <b>Expiring</b> = within ${DATA.badgeSoonDays} days. Employee status and Labor Dist
-      come from Basic Employee Info; <b>unmatched</b> = the recorded Employee ID wasn't
-      found there (kept for manual lookup, never guessed). Statuses recompute at every
-      nightly refresh.</p>`;
+      <b>Expiring</b> = within ${DATA.badgeSoonDays} days. Active employees, IDs, and
+      Labor Dist come from <b>Current Employees.csv</b> (Definitive Lists);
+      <b>unmatched</b> = the recorded Employee ID wasn't found in Current or Terminated
+      Employees (kept for manual fix in Badges.csv, never guessed). Statuses recompute
+      at every nightly refresh.</p>`;
 }
 
 function applyTab(){
-  const termed = tab === "termed";
+  const termed = bview === "termed";
   $("#view-training").style.display = tab === "training" ? "" : "none";
-  $("#view-badges").style.display = tab === "training" ? "none" : "";
-  ["training","badges","termed"].forEach(t => {
+  $("#view-badges").style.display = tab === "badges" ? "" : "none";
+  ["training","badges"].forEach(t => {
     $("#tab-" + t).classList.toggle("on", tab === t);
     $("#tab-" + t).setAttribute("aria-selected", tab === t);
   });
+  $("#sub-active").classList.toggle("on", !termed);
+  $("#sub-termed").classList.toggle("on", termed);
+  $("#sub-active").setAttribute("aria-selected", String(!termed));
+  $("#sub-termed").setAttribute("aria-selected", String(termed));
   $("#btn-new").style.display = termed ? "none" : "";
   $("#btitle").innerHTML = termed
     ? `Terminated Employees <span class="sub">&middot; badges to collect and close out</span>`
@@ -707,8 +728,9 @@ function openDeactivate(bid){
         color:var(--ink);font-weight:400">
       <input type="checkbox" id="f-ret" style="width:auto"> Physical badge was returned
       <b style="color:var(--bad)">(required)</b></label>`)}
-    ${frow("Who received the badge", `<input id="f-recv" placeholder="name of the person
-      who collected it" autocomplete="off">`)}
+    ${frow(`Who received the badge <b style="color:var(--bad)">(required)</b>`,
+      `<input id="f-recv" placeholder="name of the person who collected it"
+      autocomplete="off">`)}
     ${frow("Notes (optional)", `<input id="f-note" placeholder="reason, condition,
       anything relevant&hellip;" autocomplete="off">`)}
     <div class="ferr" id="f-err"></div>
@@ -775,15 +797,19 @@ $("#tab-training").addEventListener("click", () => {
   tab = "training"; history.replaceState(null, "", "#training"); saveState(); applyTab();
 });
 $("#tab-badges").addEventListener("click", () => {
-  tab = "badges"; history.replaceState(null, "", "#badges");
+  tab = "badges"; history.replaceState(null, "", bview === "termed" ? "#termed" : "#badges");
   saveState(); applyTab(); renderBadges();
 });
-$("#tab-termed").addEventListener("click", () => {
-  tab = "termed"; history.replaceState(null, "", "#termed");
+$("#sub-active").addEventListener("click", () => {
+  bview = "active"; history.replaceState(null, "", "#badges");
+  saveState(); applyTab(); renderBadges();
+});
+$("#sub-termed").addEventListener("click", () => {
+  bview = "termed"; history.replaceState(null, "", "#termed");
   saveState(); applyTab(); renderBadges();
 });
 if (DATA.alerts && DATA.alerts.length)
-  $("#tab-termed").innerHTML =
+  $("#sub-termed").innerHTML =
     `Terminated <span class="pill expired">${DATA.alerts.length}</span>`;
 $("#bloc").addEventListener("change", e => { bloc = e.target.value; saveState(); renderBadges(); });
 $("#bstat").addEventListener("change", e => { bstat = e.target.value; saveState(); renderBadges(); });

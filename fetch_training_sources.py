@@ -28,6 +28,8 @@ FILES = [
     "Paylocity Reports/Basic Employee Info.csv",
     "Definitive Lists/Badges.csv",
     "Definitive Lists/Roster.csv",
+    "Definitive Lists/Current Employees.csv",
+    "Definitive Lists/Terminated Employees.csv",
 ]
 
 OUT = Path(__file__).parent / "sources"
