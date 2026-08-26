@@ -105,7 +105,18 @@ def main():
     today = datetime.now().date()
     recent_ids = set()
     hire_by_id = {}          # norm id -> hire date (for the S101 due column)
+    alias_by_eid = {}        # norm id -> {normalized "first last"} incl. preferred name
     for r in read_csv("empinfo"):
+        nid = norm_eid(r["Employee Id"])
+        last = r.get("Last Name", "").strip()
+        if last:
+            # Both legal and preferred first names, so an LMS row filed under a
+            # nickname (Tony/Antonio, Britt/Brittany) still joins to S101.
+            variants = {norm_name(f"{fn} {last}")
+                        for fn in (r.get("First Name", ""),
+                                   r.get("Preferred First Name", "")) if fn.strip()}
+            if variants:
+                alias_by_eid[nid] = variants
         hd = r.get("Hire Date", "").strip()
         if not hd:
             continue
@@ -113,9 +124,9 @@ def main():
             hired = datetime.strptime(hd, "%m/%d/%Y").date()
         except ValueError:
             continue
-        hire_by_id[norm_eid(r["Employee Id"])] = hired
+        hire_by_id[nid] = hired
         if (today - hired).days <= NEW_HIRE_GRACE_DAYS:
-            recent_ids.add(norm_eid(r["Employee Id"]))
+            recent_ids.add(nid)
     print(f"hire dates: {len(hire_by_id)} employees; {len(recent_ids)} hired within "
           f"{NEW_HIRE_GRACE_DAYS} days (S101 gaps count Incomplete, not Overdue)")
 
@@ -210,14 +221,21 @@ def main():
     for eid, sp in sorted(s101_people.items()):
         raw, title = emp_names.get(eid, (f"Employee {eid}", ""))
         display = last_first_to_display(raw)
-        key = norm_name(display)
-        toks = key.split()
-        match = key if key in lms_people else None
-        if not match and len(toks) >= 2:
-            cands = [k for k in lms_by_fl.get((toks[0], toks[-1]), [])
-                     if k not in claimed]
-            if len(cands) == 1:
-                match, fallback_hits = cands[0], fallback_hits + 1
+        # Candidate join keys: the S101/legal display name plus BEI name variants
+        # (incl. Preferred First Name) so an LMS row under a nickname still matches.
+        cand_keys = {norm_name(display)} | alias_by_eid.get(norm_eid(eid), set())
+        match = next((ck for ck in cand_keys
+                      if ck in lms_people and ck not in claimed), None)
+        if not match:
+            for ck in cand_keys:
+                toks = ck.split()
+                if len(toks) < 2:
+                    continue
+                cands = [k for k in lms_by_fl.get((toks[0], toks[-1]), [])
+                         if k not in claimed]
+                if len(cands) == 1:
+                    match, fallback_hits = cands[0], fallback_hits + 1
+                    break
         entry = {"n": display, "t": title, "l": sorted(sp["locs"]),
                  "sc": sp["c"], "so": sp["o"], "si": sp["i"], "sp": sp["p"],
                  "lc": 0, "lo": 0, "li": 0}
