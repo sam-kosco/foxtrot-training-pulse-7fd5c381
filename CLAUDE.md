@@ -45,9 +45,18 @@ two top tabs — Training | Badges — with Active/Terminated sub-views inside B
   (authoritative incl. IDs; a badge with no usable ID may classify by unique name
   match against it). Location is tied to the badge; Labor Dist to the employee.
   Unmatched records are kept and labeled (never guessed, never dropped).
-- **Sub-views:** Active badges = current employees (plus unmatched); Terminated =
-  Terminated Employees.csv matches and stored Termed badges. Statuses (Active /
-  Expiring 30d / Expired) recompute at each build.
+- **Sub-views:** Active badges = current employees (plus unmatched); Deactivated =
+  badge-keyed — any badge with status Deactivated/Termed (whatever the employee's
+  status: closed location, transfer, etc.) plus every badge of a terminated
+  employee. Statuses (Active / Expiring 30d / Expired) recompute at each build.
+- **Deactivation reasons** (required dropdown; recorded in the Badges.csv
+  `Deactivation Reason` column, receiver in `Received By`): Employee terminated,
+  Location closed, Lost or damaged, Employee transferred, Expired / replaced, Other.
+  Physical return + receiver are REQUIRED for Employee terminated / Location closed /
+  Employee transferred / Expired-replaced; optional (recordable) for Lost-or-damaged
+  and Other; receiver always required when returned is checked; Other requires a
+  note. An unreturned terminated-employee badge stays on the alert list even after
+  deactivation - only a recorded return clears it.
 - **Alerts:** a terminated employee whose badge isn't marked Returned raises an alert
   (shown on the Terminated tab; emitted as `alerts` in `training_data.json` — contact
   resolved from Labor Dist via Location Management managers).

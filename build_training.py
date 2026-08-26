@@ -337,10 +337,13 @@ def main():
             bid, shown_eid, bname,
             r.get("Position", "").strip(), num, r.get("Badge Type", "").strip(),
             bexp, status, returned, bloc, labor, es,
+            r.get("Deactivation Reason", "").strip(),
         ])
-        # alert: terminated employee whose badge was never marked returned
+        # alert: terminated employee whose badge was never marked returned.
+        # Deliberately NOT cleared by deactivation alone - only a recorded
+        # return silences it (the badge is still out there otherwise).
         if (es in TERM_GROUP and returned != "Yes"
-                and status not in ("Deactivated", "Not Badged")):
+                and status != "Not Badged"):
             badge_alerts.append([bid, bname, num, bloc, labor,
                                  "; ".join(loc_mgrs.get(labor, [])), es])
     border = {"Expired": 0, "Expiring": 1, "Unknown": 2, "Active": 3,
