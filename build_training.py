@@ -106,8 +106,13 @@ def main():
     recent_ids = set()
     hire_by_id = {}          # norm id -> hire date (for the S101 due column)
     alias_by_eid = {}        # norm id -> {normalized "first last"} incl. preferred name
+    emp_status = {}          # norm id -> Employee Status Description (badge join)
+    emp_labor = {}           # norm id -> Labor Dist Description (badge join)
     for r in read_csv("empinfo"):
         nid = norm_eid(r["Employee Id"])
+        if nid:
+            emp_status[nid] = r.get("Employee Status Description", "").strip()
+            emp_labor[nid] = r.get("Labor Dist Description", "").strip()
         last = r.get("Last Name", "").strip()
         if last:
             # Both legal and preferred first names, so an LMS row filed under a
@@ -262,7 +267,15 @@ def main():
     #      build time so the page tracks today's date; lifecycle statuses
     #      (Termed / Not Badged / Deactivated) are kept as stored.
     KEEP_STATUS = {"Termed", "Not Badged", "Deactivated"}
-    badge_rows, badge_locs = [], set()
+    # Employees whose status puts their badges on the Terminated tab. Leave
+    # of Absence deliberately stays on the main list - not active, not gone.
+    TERM_GROUP = {"Terminated", "Retired", "Deceased"}
+    # labor dist -> managers (from Location Management) = who gets contacted
+    loc_mgrs = {}
+    for mgr, locs in managers.items():
+        for l in locs:
+            loc_mgrs.setdefault(l, []).append(mgr)
+    badge_rows, badge_locs, badge_alerts = [], set(), []
     for r in read_csv("badges"):
         bname = r.get("Employee Name", "").strip()
         if not bname:
@@ -282,16 +295,33 @@ def main():
                 status = "Unknown"
         if bloc:
             badge_locs.add(bloc)
+        # employee join: Basic Employee Info by normalized Employee ID.
+        # Unknown IDs are kept and labeled Unmatched - never guessed, never
+        # dropped (they are listed for manual lookup instead).
+        nid = norm_eid(r.get("Employee ID", ""))
+        es = emp_status.get(nid, "Unmatched") if nid else "Unmatched"
+        labor = emp_labor.get(nid, "") if nid else ""
+        bid = r.get("Badge ID", "").strip()
+        num = r.get("Badge Number", "").strip()
+        returned = r.get("Returned", "").strip()
         badge_rows.append([
-            r.get("Badge ID", "").strip(), r.get("Employee ID", "").strip(),
-            bname, r.get("Position", "").strip(),
-            r.get("Badge Number", "").strip(), r.get("Badge Type", "").strip(),
-            bexp, status, r.get("Returned", "").strip(), bloc,
+            bid, r.get("Employee ID", "").strip(), bname,
+            r.get("Position", "").strip(), num, r.get("Badge Type", "").strip(),
+            bexp, status, returned, bloc, labor, es,
         ])
+        # alert: terminated employee whose badge was never marked returned
+        if (es in TERM_GROUP and returned != "Yes"
+                and status not in ("Deactivated", "Not Badged")):
+            badge_alerts.append([bid, bname, num, bloc, labor,
+                                 "; ".join(loc_mgrs.get(labor, [])), es])
     border = {"Expired": 0, "Expiring": 1, "Unknown": 2, "Active": 3,
               "Not Badged": 4, "Termed": 5}
     badge_rows.sort(key=lambda b: (border.get(b[7], 9), b[9], b[2]))
-    print(f"badges: {len(badge_rows)} rows across {len(badge_locs)} locations")
+    n_unmatched = sum(1 for b in badge_rows if b[11] == "Unmatched")
+    n_termed = sum(1 for b in badge_rows if b[11] in TERM_GROUP or b[7] == "Termed")
+    print(f"badges: {len(badge_rows)} rows across {len(badge_locs)} locations; "
+          f"{n_termed} on the Terminated tab, {n_unmatched} unmatched IDs, "
+          f"{len(badge_alerts)} unreturned-badge alerts")
 
     # ---- Active roster, minimal fields, for the New Badge employee picker
     roster_min = []
@@ -351,6 +381,7 @@ def main():
         "expRows": exp_detail,
         "people": people,
         "badges": badge_rows,
+        "alerts": badge_alerts,
         "roster": roster_min,
         "badgeLocs": sorted(badge_locs),
         "badgeSoonDays": BADGE_SOON_DAYS,

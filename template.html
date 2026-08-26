@@ -150,6 +150,7 @@ input.search:focus{outline:none;border-color:var(--orange)}
   <div class="tabs" role="tablist" aria-label="Page sections">
     <button class="tab on" id="tab-training" role="tab" aria-selected="true">Training</button>
     <button class="tab" id="tab-badges" role="tab" aria-selected="false">Badges</button>
+    <button class="tab" id="tab-termed" role="tab" aria-selected="false">Terminated</button>
   </div>
 
 <div id="view-training">
@@ -199,7 +200,7 @@ input.search:focus{outline:none;border-color:var(--orange)}
 </div><!-- /view-training -->
 
 <div id="view-badges" style="display:none">
-  <h2>Badge Compliance <span class="sub">&middot; airport badges by location</span></h2>
+  <h2 id="btitle">Badge Compliance <span class="sub">&middot; airport badges by location</span></h2>
   <div class="controls">
     <label for="bloc">Location</label>
     <select id="bloc" aria-label="Choose badge location"></select>
@@ -213,6 +214,10 @@ input.search:focus{outline:none;border-color:var(--orange)}
     <button class="btn primary" id="btn-new">&#65291; New Badge</button>
     <span style="font-size:12.5px;color:var(--muted)">Renew or deactivate a badge from its
       row in the table below.</span>
+  </div>
+  <div class="card" id="balerts" style="display:none">
+    <div class="hd"></div>
+    <div class="scroller" id="balertbody"></div>
   </div>
   <div class="kpis" id="bkpis"></div>
   <div class="card">
@@ -247,11 +252,12 @@ try{
   const s = JSON.parse(sessionStorage.getItem("tp-state") || "{}");
   if (s.rm === ALL || DATA.managers[s.rm]) rm = s.rm ?? ALL;
   if (s.loc === ALL || DATA.locations.includes(s.loc)) loc = s.loc ?? ALL;
-  if (s.tab === "badges") tab = "badges";
+  if (s.tab === "badges" || s.tab === "termed") tab = s.tab;
   if (s.bloc === ALL || DATA.badgeLocs.includes(s.bloc)) bloc = s.bloc ?? ALL;
   if (typeof s.bstat === "string") bstat = s.bstat;
 }catch(e){}
 if (DEEP || location.hash === "#badges") tab = "badges";
+else if (location.hash === "#termed") tab = "termed";
 else if (location.hash === "#training") tab = "training";
 if (DEEP) { bloc = ALL; bstat = ALL; }   // never let a saved filter hide the linked badge
 function saveState(){ sessionStorage.setItem("tp-state", JSON.stringify({rm, loc, tab, bloc, bstat})); }
@@ -456,6 +462,10 @@ function renderChart(sel){
 const BSTATUSES = ["Active","Expiring","Expired","Not Badged","Termed","Unknown"];
 const PILLC = {Active:"active", Expiring:"expiring", Expired:"expired", Termed:"termed",
   "Not Badged":"notbadged", Unknown:"unknown", Deactivated:"termed"};
+// badge row: [10] = employee Labor Dist, [11] = employee status from Basic
+// Employee Info ("Unmatched" = ID missing or not found; kept, never guessed)
+const TERMGRP = ["Terminated","Retired","Deceased"];
+const isTermRow = b => TERMGRP.includes(b[11]) || b[7] === "Termed";
 const bfmt = iso => { const m = /^(\d{4})-(\d\d)-(\d\d)$/.exec(iso);
   return m ? `${m[2]}/${m[3]}/${m[1].slice(2)}` : (iso ? esc(iso) : "&mdash;"); };
 
@@ -469,70 +479,132 @@ function renderBadgeControls(){
 }
 
 function renderBadges(){
-  const scope = DATA.badges.filter(b => bloc === ALL || b[9] === bloc);
+  const termed = tab === "termed";
+  const scope = DATA.badges.filter(b => (bloc === ALL || b[9] === bloc)
+    && (termed ? isTermRow(b) : !isTermRow(b)));
   const n = st => scope.filter(b => b[7] === st).length;
   const label = bloc === ALL ? "all locations" : bloc;
   const tile = (lab, v, neg, sub) => `<div class="kpi"><div class="kpi-label">${lab}</div>
     <div class="kpi-val ${v ? (neg ? "neg" : "pos") : "pos"}">${v}</div>
     <div class="kpi-sub">${sub}</div></div>`;
-  $("#bkpis").innerHTML =
-    `<div class="kpi"><div class="kpi-label">Badges</div>
-      <div class="kpi-val">${(scope.length - n("Not Badged") - n("Termed")).toLocaleString()}</div>
-      <div class="kpi-sub">${esc(label)}</div></div>` +
-    tile("Active", n("Active"), false, "more than " + DATA.badgeSoonDays + " days left") +
-    tile("Expiring soon", n("Expiring"), true, "within " + DATA.badgeSoonDays + " days") +
-    tile("Expired", n("Expired"), true, "past their date") +
-    tile("Not badged", n("Not Badged"), true, "personnel without a badge");
+  if (termed){
+    const notRet = scope.filter(b => b[8] !== "Yes" && b[7] !== "Deactivated"
+      && b[7] !== "Not Badged").length;
+    $("#bkpis").innerHTML =
+      `<div class="kpi"><div class="kpi-label">Terminated-employee badges</div>
+        <div class="kpi-val">${scope.length.toLocaleString()}</div>
+        <div class="kpi-sub">${esc(label)}</div></div>` +
+      tile("Not returned", notRet, true, "needs collection — see alerts") +
+      tile("Returned", scope.filter(b => b[8] === "Yes").length, false,
+        "physical badge handed back");
+  } else {
+    $("#bkpis").innerHTML =
+      `<div class="kpi"><div class="kpi-label">Badges</div>
+        <div class="kpi-val">${(scope.length - n("Not Badged")).toLocaleString()}</div>
+        <div class="kpi-sub">${esc(label)}</div></div>` +
+      tile("Active", n("Active"), false, "more than " + DATA.badgeSoonDays + " days left") +
+      tile("Expiring soon", n("Expiring"), true, "within " + DATA.badgeSoonDays + " days") +
+      tile("Expired", n("Expired"), true, "past their date") +
+      tile("Not badged", n("Not Badged"), true, "personnel without a badge");
+  }
+
+  // alerts card: terminated employees whose badge was never returned
+  const al = (DATA.alerts || []).filter(a => bloc === ALL || a[3] === bloc);
+  const box = $("#balerts");
+  if (termed && al.length){
+    box.style.display = "";
+    box.querySelector(".hd").innerHTML = `&#9888;&#65039; Unreturned badges
+      <span class="sub">${al.length} terminated employee badge${al.length===1?"":"s"}
+      not marked returned &middot; contact = labor-distribution manager</span>`;
+    $("#balertbody").innerHTML = `<div class="grid" style="min-width:820px;
+      grid-template-columns:minmax(150px,1.4fr) minmax(110px,1fr) 90px minmax(100px,1fr) minmax(170px,1.6fr)">
+      <div class="grow hrow"><div class="cell">Employee</div><div class="cell">Badge #</div>
+      <div class="cell">Location</div><div class="cell">Labor Dist</div><div class="cell">Contact</div></div>` +
+      al.map((a,i) => `<div class="grow ${i%2?"oddrow":""}">
+        <div class="cell" style="font-weight:600">${esc(a[1])}</div>
+        <div class="cell">${esc(a[2]) || "&mdash;"}</div>
+        <div class="cell">${esc(a[3]) || "&mdash;"}</div>
+        <div class="cell">${esc(a[4]) || "&mdash;"}</div>
+        <div class="cell" title="${esc(a[5])}">${esc(a[5]) || "&mdash;"}</div></div>`).join("") +
+      `</div>`;
+  } else box.style.display = "none";
 
   const q = bq.trim().toLowerCase();
   const rows = scope.filter(b =>
     (bstat === ALL || b[7] === bstat) &&
     (!q || [b[0], b[1], b[2], b[4]].some(v => v.toLowerCase().includes(q))));
-  $("#bhd").innerHTML = `Badges <span class="sub">${rows.length.toLocaleString()}
+  $("#bhd").innerHTML = `${termed ? "Terminated employees &amp; badges" : "Badges"}
+    <span class="sub">${rows.length.toLocaleString()}
     row${rows.length===1?"":"s"} &middot; sorted most urgent first &middot; ${esc(label)}</span>`;
   const showLoc = bloc === ALL;
-  const cols = ["Emp ID","Employee","Position","Badge #","Type","Expires","Status","Returned"]
+  const ldCell = b => b[10] ? esc(b[10])
+    : (b[11] === "Unmatched" ? `<span class="pill unknown">unmatched</span>` : "&mdash;");
+  const cols = (termed
+    ? ["Emp ID","Employee","Emp status","Labor Dist","Badge #","Type","Status","Returned"]
+    : ["Emp ID","Employee","Position","Labor Dist","Badge #","Type","Expires","Status","Returned"])
     .concat(showLoc ? ["Location"] : []).concat(["Actions"]);
-  const widths = "80px minmax(150px,1.5fr) minmax(95px,1fr) minmax(110px,1.1fr) " +
-    "minmax(95px,1fr) 82px 110px 84px" + (showLoc ? " 92px" : "") + " 148px";
+  const widths = (termed
+    ? "80px minmax(140px,1.4fr) 100px minmax(95px,1fr) minmax(105px,1fr) minmax(90px,.9fr) 104px 82px"
+    : "80px minmax(140px,1.4fr) minmax(90px,.9fr) minmax(92px,.9fr) minmax(105px,1fr) " +
+      "minmax(90px,.9fr) 80px 104px 82px")
+    + (showLoc ? " 90px" : "") + " 150px";
   const shown = rows.slice(0, ROWCAP);
   const head = `<div class="grow hrow">${cols.map(c => `<div class="cell">${c}</div>`).join("")}</div>`;
   const body = shown.map((b,i) => {
-    const acts = (b[7] === "Termed" || b[7] === "Not Badged") ? "&mdash;"
-      : `<span class="rowact"><button data-act="renew" data-bid="${esc(b[0])}">Renew</button>` +
-        `<button class="danger" data-act="deact" data-bid="${esc(b[0])}">Deact.</button></span>`;
+    const deactable = b[7] !== "Termed" && b[7] !== "Not Badged"
+      && b[7] !== "Deactivated" && b[8] !== "Yes";
+    const acts = termed
+      ? (deactable ? `<span class="rowact"><button class="danger" data-act="deact"
+          data-bid="${esc(b[0])}">Deactivate</button></span>` : "&mdash;")
+      : ((b[7] === "Termed" || b[7] === "Not Badged") ? "&mdash;"
+        : `<span class="rowact"><button data-act="renew" data-bid="${esc(b[0])}">Renew</button>` +
+          `<button class="danger" data-act="deact" data-bid="${esc(b[0])}">Deact.</button></span>`);
+    const cells = [
+      `<div class="cell">${esc(b[1]) || "&mdash;"}</div>`,
+      `<div class="cell" style="font-weight:600" title="${esc(b[2])}">${esc(b[2])}</div>`,
+      termed ? `<div class="cell">${esc(b[11])}</div>`
+             : `<div class="cell" title="${esc(b[3])}">${esc(b[3]) || "&mdash;"}</div>`,
+      `<div class="cell">${ldCell(b)}</div>`,
+      `<div class="cell" title="${esc(b[4])}">${esc(b[4]) || "&mdash;"}</div>`,
+      `<div class="cell" title="${esc(b[5])}">${esc(b[5]) || "&mdash;"}</div>`,
+      ...(termed ? [] : [`<div class="cell">${bfmt(b[6])}</div>`]),
+      `<div class="cell"><span class="pill ${PILLC[b[7]] || "unknown"}">${esc(b[7])}</span></div>`,
+      `<div class="cell">${esc(b[8]) || "&mdash;"}</div>`,
+      ...(showLoc ? [`<div class="cell">${esc(b[9]) || "&mdash;"}</div>`] : []),
+      `<div class="cell">${acts}</div>`];
     return `<div class="grow ${i%2?"oddrow":""}${DEEP && b[0]===DEEP ? " hlrow" : ""}"
-      id="bdg-${esc(b[0])}">
-    <div class="cell">${esc(b[1]) || "&mdash;"}</div>
-    <div class="cell" style="font-weight:600" title="${esc(b[2])}">${esc(b[2])}</div>
-    <div class="cell" title="${esc(b[3])}">${esc(b[3]) || "&mdash;"}</div>
-    <div class="cell" title="${esc(b[4])}">${esc(b[4]) || "&mdash;"}</div>
-    <div class="cell" title="${esc(b[5])}">${esc(b[5]) || "&mdash;"}</div>
-    <div class="cell">${bfmt(b[6])}</div>
-    <div class="cell"><span class="pill ${PILLC[b[7]] || "unknown"}">${esc(b[7])}</span></div>
-    <div class="cell">${esc(b[8]) || "&mdash;"}</div>
-    ${showLoc ? `<div class="cell">${esc(b[9]) || "&mdash;"}</div>` : ""}
-    <div class="cell">${acts}</div></div>`; }).join("");
+      id="bdg-${esc(b[0])}">${cells.join("")}</div>`; }).join("");
   $("#bbody").innerHTML = rows.length
-    ? `<div class="grid" style="min-width:1040px;grid-template-columns:${widths}">${head}${body}</div>`
+    ? `<div class="grid" style="min-width:1080px;grid-template-columns:${widths}">${head}${body}</div>`
     : `<div style="padding:14px;color:var(--muted)">No badges match this filter.</div>`;
   const cap = $("#bcap");
   cap.style.display = rows.length > ROWCAP ? "" : "none";
   if (rows.length > ROWCAP) cap.textContent =
     `Showing the first ${ROWCAP} of ${rows.length.toLocaleString()} rows — narrow the filter.`;
-  $("#bnote").innerHTML = `<p>Badge data as of <b>${esc(DATA.badgesAsof)}</b>.
-    <b>Expiring</b> = within ${DATA.badgeSoonDays} days. Statuses are recomputed at every
-    nightly refresh; Termed badges are kept for the audit trail (Returned = physical badge
-    handed back).</p>`;
+  $("#bnote").innerHTML = termed
+    ? `<p>Employees whose status in Basic Employee Info is Terminated, Retired, or
+      Deceased, plus badges recorded as Termed. <b>Deactivating</b> a badge here requires
+      marking the physical badge returned and naming who received it. Employees on
+      Leave of Absence stay on the main Badges tab.</p>`
+    : `<p>Badge data as of <b>${esc(DATA.badgesAsof)}</b>.
+      <b>Expiring</b> = within ${DATA.badgeSoonDays} days. Employee status and Labor Dist
+      come from Basic Employee Info; <b>unmatched</b> = the recorded Employee ID wasn't
+      found there (kept for manual lookup, never guessed). Statuses recompute at every
+      nightly refresh.</p>`;
 }
 
 function applyTab(){
+  const termed = tab === "termed";
   $("#view-training").style.display = tab === "training" ? "" : "none";
-  $("#view-badges").style.display = tab === "badges" ? "" : "none";
-  $("#tab-training").classList.toggle("on", tab === "training");
-  $("#tab-badges").classList.toggle("on", tab === "badges");
-  $("#tab-training").setAttribute("aria-selected", tab === "training");
-  $("#tab-badges").setAttribute("aria-selected", tab === "badges");
+  $("#view-badges").style.display = tab === "training" ? "none" : "";
+  ["training","badges","termed"].forEach(t => {
+    $("#tab-" + t).classList.toggle("on", tab === t);
+    $("#tab-" + t).setAttribute("aria-selected", tab === t);
+  });
+  $("#btn-new").style.display = termed ? "none" : "";
+  $("#btitle").innerHTML = termed
+    ? `Terminated Employees <span class="sub">&middot; badges to collect and close out</span>`
+    : `Badge Compliance <span class="sub">&middot; airport badges by location</span>`;
 }
 
 /* ---------- badge action forms ----------
@@ -633,16 +705,30 @@ function openDeactivate(bid){
       <span class="pill ${PILLC[b[7]] || "unknown"}">${esc(b[7])}</span></div>
     ${frow("", `<label style="display:flex;gap:8px;align-items:center;font-size:13.5px;
         color:var(--ink);font-weight:400">
-      <input type="checkbox" id="f-ret" style="width:auto"> Physical badge was returned</label>`)}
-    ${frow("Note (optional)", `<input id="f-note" placeholder="reason, who collected it&hellip;"
-      autocomplete="off">`)}
+      <input type="checkbox" id="f-ret" style="width:auto"> Physical badge was returned
+      <b style="color:var(--bad)">(required)</b></label>`)}
+    ${frow("Who received the badge", `<input id="f-recv" placeholder="name of the person
+      who collected it" autocomplete="off">`)}
+    ${frow("Notes (optional)", `<input id="f-note" placeholder="reason, condition,
+      anything relevant&hellip;" autocomplete="off">`)}
     <div class="ferr" id="f-err"></div>
     <div class="btnrow"><button class="btn ghost" id="f-cancel">Cancel</button>
       <button class="btn primary" style="background:var(--bad)" id="f-save">Deactivate badge</button></div>`);
   $("#f-cancel").onclick = closeModal;
   $("#f-save").onclick = () => {
+    const err = $("#f-err");
+    if (!$("#f-ret").checked) {
+      err.textContent = "The physical badge must be marked as returned before " +
+        "deactivation can be completed.";
+      return;
+    }
+    if (!$("#f-recv").value.trim()) {
+      err.textContent = "Enter who received the badge.";
+      return;
+    }
     showPreview({action: "deactivate", badgeId: b[0], employeeId: b[1], employeeName: b[2],
-      badgeNumber: b[4], location: b[9], returned: $("#f-ret").checked,
+      badgeNumber: b[4], location: b[9], returned: true,
+      receivedBy: $("#f-recv").value.trim(),
       note: $("#f-note").value.trim(), requestedAt: new Date().toISOString()});
   };
 }
@@ -689,8 +775,16 @@ $("#tab-training").addEventListener("click", () => {
   tab = "training"; history.replaceState(null, "", "#training"); saveState(); applyTab();
 });
 $("#tab-badges").addEventListener("click", () => {
-  tab = "badges"; history.replaceState(null, "", "#badges"); saveState(); applyTab();
+  tab = "badges"; history.replaceState(null, "", "#badges");
+  saveState(); applyTab(); renderBadges();
 });
+$("#tab-termed").addEventListener("click", () => {
+  tab = "termed"; history.replaceState(null, "", "#termed");
+  saveState(); applyTab(); renderBadges();
+});
+if (DATA.alerts && DATA.alerts.length)
+  $("#tab-termed").innerHTML =
+    `Terminated <span class="pill expired">${DATA.alerts.length}</span>`;
 $("#bloc").addEventListener("change", e => { bloc = e.target.value; saveState(); renderBadges(); });
 $("#bstat").addEventListener("change", e => { bstat = e.target.value; saveState(); renderBadges(); });
 $("#bsearch").addEventListener("input", e => { bq = e.target.value; renderBadges(); });

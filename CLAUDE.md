@@ -31,6 +31,30 @@ The repo name carries a random suffix and the page carries `noindex` because the
 - **Needs attention watchlist** (the addition, shown under the KPIs): a person is listed when (LMS Overdue + S101 Overdue) ÷ (LMS counted + S101 required) > 20%. Follows the RM/location filter. The LMS↔Safety101 person join is by normalized name ("Last, First" flipped, letters-only): ~92% of S101 people match; unmatched people still appear with one system's counts.
 - The page force-reloads every 30 minutes; filter state persists in sessionStorage across reloads.
 
+## Badges (Training and Credentials)
+
+The page carries a Badges section (branch `training-and-credentials`, owner Clara Lana):
+three tabs — Training | Badges | Terminated.
+
+- **Source of truth:** `Definitive Lists/Badges.csv` (one row per badge; built by the
+  one-time `consolidate_badges.py` migration from the old 37-tab workbook).
+- **Employee join:** by normalized Employee ID against `Paylocity Reports/Basic
+  Employee Info.csv` — supplies employee status and Labor Dist. Location is tied to
+  the badge; Labor Dist is tied to the employee. Unmatched IDs are kept and labeled
+  "Unmatched" (never guessed, never dropped) and are exported for manual lookup.
+- **Tabs:** Badges = employees whose status is Active or Leave of Absence (plus
+  unmatched); Terminated = Terminated/Retired/Deceased employees and stored Termed
+  badges. Statuses (Active / Expiring 30d / Expired) recompute at each build.
+- **Alerts:** a terminated employee whose badge isn't marked Returned raises an alert
+  (shown on the Terminated tab; emitted as `alerts` in `training_data.json` — contact
+  resolved from Labor Dist via Location Management managers).
+- **Actions** (modeled on the Hiring Hub's interaction patterns): New Badge / Renew /
+  Deactivate modal forms. Deactivation requires the physical badge marked returned
+  plus who received it. Forms run in PREVIEW MODE — they display the JSON payload
+  that will go to the Power Automate save relay once Sam wires it; nothing writes yet.
+- **Deep links:** `#badge/<id>` highlights a row; `#renew/<id>` opens that badge's
+  renewal form (target for alert emails).
+
 ## Local development
 
 `python build_training.py` reads the synced Data Hub folder directly. Open `index.html` — no server needed.
