@@ -278,13 +278,16 @@ def main():
         cid = norm_eid(r.get("Employee Id", ""))
         if cid:
             cur_emp[cid] = (r.get("Status", "").strip() or "Active",
-                            r.get("Home Labor Assignment", "").strip())
+                            r.get("Home Labor Assignment", "").strip(),
+                            r.get("Position", "").strip())
     term_emp, term_names = {}, {}
     for r in read_csv("termedcsv"):
         tid = norm_eid(r.get("Employee Id", ""))
         if not tid:
             continue
-        term_emp[tid] = r.get("Labor Dist Description", "").strip()
+        term_emp[tid] = (r.get("Labor Dist Description", "").strip(),
+                         (r.get("Position Description", "").strip()
+                          or r.get("Job Title", "").strip()))
         tlast = r.get("Last Name", "").strip()
         for fn in (r.get("First Name", ""), r.get("Preferred First Name", "")):
             if fn.strip() and tlast:
@@ -319,23 +322,29 @@ def main():
         # manual fix in Badges.csv - never guessed, never dropped.
         nid = norm_eid(r.get("Employee ID", ""))
         shown_eid = r.get("Employee ID", "").strip()
+        # position is standardized from the employee files for matched
+        # employees (auto-updates on promotion); the badge tracker's
+        # hand-typed value survives only for unmatched records
         if nid and nid in cur_emp:
-            es, labor = cur_emp[nid]
+            es, labor, position = cur_emp[nid]
         elif nid and nid in term_emp:
-            es, labor = "Terminated", term_emp[nid]
+            es = "Terminated"
+            labor, position = term_emp[nid]
         else:
             tmatch = term_names.get(norm_name(bname))
             if tmatch:
-                es, labor = "Terminated", term_emp[tmatch]
+                es = "Terminated"
+                labor, position = term_emp[tmatch]
                 shown_eid = shown_eid or tmatch
             else:
-                es, labor = "Unmatched", ""
+                es, labor, position = "Unmatched", "", ""
         bid = r.get("Badge ID", "").strip()
         num = r.get("Badge Number", "").strip()
         returned = r.get("Returned", "").strip()
         badge_rows.append([
             bid, shown_eid, bname,
-            r.get("Position", "").strip(), num, r.get("Badge Type", "").strip(),
+            position or r.get("Position", "").strip(),
+            num, r.get("Badge Type", "").strip(),
             bexp, status, returned, bloc, labor, es,
             r.get("Deactivation Reason", "").strip(),
         ])

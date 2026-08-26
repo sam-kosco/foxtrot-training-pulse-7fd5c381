@@ -487,7 +487,9 @@ const TERMGRP = ["Terminated","Retired","Deceased"];
 // Deactivated view membership is keyed to the BADGE (deactivated for any
 // reason - a location closing, a transfer - even if the employee is still
 // active), plus all badges of terminated employees (the collection worklist).
-const isTermRow = b => TERMGRP.includes(b[11]) || b[7] === "Termed" || b[7] === "Deactivated";
+// A recorded return ALWAYS moves the badge here - never shown as active.
+const isTermRow = b => TERMGRP.includes(b[11]) || b[7] === "Termed"
+  || b[7] === "Deactivated" || b[8] === "Yes";
 const bfmt = iso => { const m = /^(\d{4})-(\d\d)-(\d\d)$/.exec(iso);
   return m ? `${m[2]}/${m[3]}/${m[1].slice(2)}` : (iso ? esc(iso) : "&mdash;"); };
 
@@ -562,13 +564,13 @@ function renderBadges(){
     : (b[11] === "Unmatched" ? `<span class="pill unknown">unmatched</span>` : "&mdash;");
   const cols = (termed
     ? ["Emp ID","Employee","Emp status","Labor Dist","Badge #","Type","Status","Returned","Reason"]
-    : ["Emp ID","Employee","Position","Labor Dist","Badge #","Type","Expires","Status","Returned"])
+    : ["Emp ID","Employee","Position","Labor Dist","Badge #","Type","Expires","Status"])
     .concat(showLoc ? ["Location"] : []).concat(["Actions"]);
   const widths = (termed
     ? "80px minmax(140px,1.4fr) 96px minmax(92px,.9fr) minmax(100px,1fr) minmax(88px,.9fr) " +
       "100px 78px minmax(110px,1.1fr)"
-    : "80px minmax(140px,1.4fr) minmax(90px,.9fr) minmax(92px,.9fr) minmax(105px,1fr) " +
-      "minmax(90px,.9fr) 80px 104px 82px")
+    : "80px minmax(140px,1.4fr) minmax(95px,1fr) minmax(95px,1fr) minmax(108px,1.1fr) " +
+      "minmax(92px,.9fr) 82px 106px")
     + (showLoc ? " 90px" : "") + " 150px";
   const shown = rows.slice(0, ROWCAP);
   const head = `<div class="grow hrow">${cols.map(c => `<div class="cell">${c}</div>`).join("")}</div>`;
@@ -592,8 +594,8 @@ function renderBadges(){
       `<div class="cell" title="${esc(b[5])}">${esc(b[5]) || "&mdash;"}</div>`,
       ...(termed ? [] : [`<div class="cell">${bfmt(b[6])}</div>`]),
       `<div class="cell"><span class="pill ${PILLC[b[7]] || "unknown"}">${esc(b[7])}</span></div>`,
-      `<div class="cell">${esc(b[8]) || "&mdash;"}</div>`,
-      ...(termed ? [`<div class="cell" title="${esc(b[12] || "")}">${esc(b[12] || "") || "&mdash;"}</div>`] : []),
+      ...(termed ? [`<div class="cell">${esc(b[8]) || "&mdash;"}</div>`,
+        `<div class="cell" title="${esc(b[12] || "")}">${esc(b[12] || "") || "&mdash;"}</div>`] : []),
       ...(showLoc ? [`<div class="cell">${esc(b[9]) || "&mdash;"}</div>`] : []),
       `<div class="cell">${acts}</div>`];
     return `<div class="grow ${i%2?"oddrow":""}${DEEP && b[0]===DEEP ? " hlrow" : ""}"

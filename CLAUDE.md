@@ -43,8 +43,12 @@ two top tabs — Training | Badges — with Active/Terminated sub-views inside B
   `Definitive Lists/Current Employees.csv` (status + Labor Dist from Home Labor
   Assignment); terminated employees from `Definitive Lists/Terminated Employees.csv`
   (authoritative incl. IDs; a badge with no usable ID may classify by unique name
-  match against it). Location is tied to the badge; Labor Dist to the employee.
+  match against it). Location is tied to the badge; Labor Dist AND Position are tied
+  to the employee (standardized from the employee files at build time; the badge
+  tracker's hand-typed position survives only for unmatched records).
   Unmatched records are kept and labeled (never guessed, never dropped).
+  A badge with Returned = Yes always renders in the Deactivated view, never active;
+  the Returned column is shown only there.
 - **Sub-views:** Active badges = current employees (plus unmatched); Deactivated =
   badge-keyed — any badge with status Deactivated/Termed (whatever the employee's
   status: closed location, transfer, etc.) plus every badge of a terminated
