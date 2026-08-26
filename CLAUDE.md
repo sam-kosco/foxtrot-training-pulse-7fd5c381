@@ -29,7 +29,8 @@ The repo name carries a random suffix and the page carries `noindex` because the
 - **Watchlist O/I/C columns** show per-person overdue/incomplete/completed counts per platform; the >20% share = (LMS O + S101 O) ÷ (LMS C+O + S101 C+O).
 - **By-location chart**: locations with S101 compliance = 0 are excluded (the pbix visual filter). Benchmark line = 0.85 (`[Compliance Benchmark]`). Intentional fix kept from v1: the pbix plots `Sum(Management[LMS Compliance])`, which doubles percentages for two-manager locations; here each location is plotted once.
 - **Needs attention watchlist** (the addition, shown under the KPIs): a person is listed when (LMS Overdue + S101 Overdue) ÷ (LMS counted + S101 required) > 20%. Follows the RM/location filter. The LMS↔Safety101 person join is by normalized name ("Last, First" flipped, letters-only): ~92% of S101 people match; unmatched people still appear with one system's counts.
-- The page force-reloads every 30 minutes; filter state persists in sessionStorage across reloads.
+- The page force-reloads every 30 minutes; filter state persists in sessionStorage across reloads (validated against the active scope).
+- **Platform-embed scoping (2026-08-26)**: the platform shell appends `#pscope={rms,locs}` (URL-encoded JSON) to the iframe src, computed per acting user from the org chart (`/api/training/scope`). When present: the location dropdown trims to `locs`, the RM dropdown hides unless `rms` is non-empty (only RMs *below* the viewer appear), and the unfiltered default aggregates over "your locations". Matching is case-insensitive on both names and locations (training locations ARE labor-dist names). No hash = public/mirror behavior, completely unfiltered — that's the whole isolation mechanism, keep it hash-only.
 
 ## Local development
 
