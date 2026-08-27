@@ -41,21 +41,34 @@ jobs:
             echo "run=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
           export TZ=America/New_York
-          H=$(date +%H); TODAY=$(date +%F)
-          # Dedup against tonight's other cron only: a manual daytime refresh
-          # must not cancel the evening run, so only commits made at/after
-          # 9 PM Eastern today count as "already refreshed".
-          LASTDT=$(git log -1 --grep "chore: refresh training pulse" \
-                   --format=%cd --date=format-local:"%F %H" 2>/dev/null || true)
-          LASTD="${LASTDT% *}"; LASTH="${LASTDT#* }"
-          if [ "$H" -lt 21 ]; then
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "Before 9 PM Eastern (hour=$H) — skipping."
-          elif [ "$LASTD" = "$TODAY" ] && [ "${LASTH:-0}" -ge 21 ]; then
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "Already refreshed this evening ($TODAY $LASTH:xx) — skipping."
+          H=$(date +%H)
+          NOW=$(date +%s)
+          LAST=$(git log -1 --grep "chore: refresh training pulse" \
+                 --format=%ct 2>/dev/null || echo 0)
+          AGE_H=$(( LAST > 0 ? (NOW - LAST) / 3600 : 999 ))
+          if [ "$H" -ge 21 ]; then
+            # Normal evening window. Dedup against tonight's OTHER cron only
+            # (they fire an hour apart): a manual daytime refresh is older
+            # than 3h by 9 PM, so it never cancels the evening run.
+            if [ "$AGE_H" -lt 3 ]; then
+              echo "run=false" >> "$GITHUB_OUTPUT"
+              echo "Already refreshed this evening (${AGE_H}h ago) — skipping."
+            else
+              echo "run=true" >> "$GITHUB_OUTPUT"
+            fi
           else
-            echo "run=true" >> "$GITHUB_OUTPUT"
+            # A cron that fires OUTSIDE the evening is one GitHub delayed by
+            # hours (2026-08-27: both slipped ~9h to the next morning and the
+            # old before-9-PM rule skipped them — a full data day lost).
+            # Catch up if last evening's refresh never landed; stand down if
+            # any refresh ran in the last 20h.
+            if [ "$AGE_H" -ge 20 ]; then
+              echo "run=true" >> "$GITHUB_OUTPUT"
+              echo "Delayed cron catch-up: last refresh ${AGE_H}h ago."
+            else
+              echo "run=false" >> "$GITHUB_OUTPUT"
+              echo "Refreshed ${AGE_H}h ago — skipping (hour=$H)."
+            fi
           fi
 
       - name: Set up Python
