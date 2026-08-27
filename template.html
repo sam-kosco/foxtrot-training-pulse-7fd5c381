@@ -282,7 +282,7 @@ if (DEEP) {   // never let a saved filter or the wrong sub-view hide the linked 
     bview = "termed";
   } else {
     bview = "cov";
-    covLD = d ? (d[11] === "Unmatched" ? UNM : (d[10] || "(no labor dist)")) : covLD;
+    covLD = d ? (d[11] === "Unmatched" ? UNM : (d[9] || "(no location)")) : covLD;
   }
 }
 function saveState(){ sessionStorage.setItem("tp-state",
@@ -521,7 +521,9 @@ function ldBadgeStats(){
   const m = {};
   DATA.badges.forEach(b => {
     if (isTermRow(b) || b[7] === "Not Badged") return;
-    const k = b[11] === "Unmatched" ? UNM : (b[10] || "(no labor dist)");
+    // badges are filed by BADGE LOCATION (where the badge belongs), not by
+    // the holder's labor dist - a regional manager's OMA badge counts at OMA
+    const k = b[11] === "Unmatched" ? UNM : (b[9] || "(no location)");
     const s = m[k] = m[k] || {t: 0, Active: 0, Expiring: 0, Expired: 0, Unknown: 0};
     s.t++;
     if (s[b[7]] !== undefined) s[b[7]]++;
@@ -571,7 +573,8 @@ function renderCoverage(){
     <div class="cell num">${s.Active}</div>
     ${num(s.Expiring, s.Expiring ? "#b45309" : "")}
     ${num(s.Expired, s.Expired ? "var(--bad)" : "")}
-    <div class="cell num"><span class="pill ${covPill(pct(c))}">${pct(c)}%</span></div>
+    <div class="cell num">${c[1]
+      ? `<span class="pill ${covPill(pct(c))}">${pct(c)}%</span>` : "&mdash;"}</div>
   </div>`; }).join("");
   const unmN = (stats[UNM] || {}).t || 0;
   if (unmN && !q) body += `<div class="grow covrow" data-ld="${UNM}">
@@ -606,32 +609,38 @@ function renderDrill(){
     DATA.badges.filter(b => b[11] === "Unmatched" && !isTermRow(b))
       .forEach(b => all.push({b, e: null}));
   } else {
+    // badges are FILED by badge location: this folder holds every badge that
+    // belongs to it (whoever holds it), plus the folder's own payroll people
     emps = DATA.employees.filter(e => e[2] === covLD);
-    const byEid = {};
+    const byEid = {};        // holder id -> all their live badges, any folder
     liveRows.forEach(b => {
       const k = b[1].replace(/\D/g, "");
       if (k) (byEid[k] = byEid[k] || []).push(b);
     });
+    liveRows.filter(b => b[9] === covLD).forEach(b => {
+      const k = b[1].replace(/\D/g, "");
+      all.push({b, e: DATA.employees.find(x => x[0] === k) || null});
+    });
     emps.forEach(e => {
       const bs = byEid[e[0]] || [];
-      if (bs.length) bs.forEach(b => all.push({b, e}));
-      else all.push({b: null, e});
+      if (!bs.length) all.push({b: null, e});          // truly unbadged
+      else if (!bs.some(b => b[9] === covLD))          // badged, but elsewhere
+        all.push({b: null, e, away: [...new Set(bs.map(b => b[9] || "?"))]});
     });
   }
-  const stat = r => r.b ? r.b[7] : "Not Badged";
+  const stat = r => r.b ? r.b[7] : (r.away ? "Badged elsewhere" : "Not Badged");
   const cnt = st => all.filter(r => stat(r) === st).length;
-  const badgedEmp = new Set(all.filter(r => r.b && r.e).map(r => r.e[0]));
+  const notBadged = all.filter(r => !r.b && !r.away).length;
   $("#bkpis").innerHTML = unm
     ? covTile("Unmatched records", all.length, all.length ? "neg" : "pos",
         "no Employee ID match anywhere — fix in Badges.csv")
     : covTile("Employees", emps.length, "", esc(covLD)) +
-      covTile("Total badges", all.filter(r => r.b).length, "", "held by these employees") +
+      covTile("Badges here", all.filter(r => r.b).length, "", "filed to this location") +
       covTile("Active", cnt("Active"), "pos", "more than " + DATA.badgeSoonDays + " days left") +
       covTile("Expiring soon", cnt("Expiring"), cnt("Expiring") ? "neg" : "pos",
         "within " + DATA.badgeSoonDays + " days") +
       covTile("Expired", cnt("Expired"), cnt("Expired") ? "neg" : "pos", "past their date") +
-      covTile("Not badged", emps.length - badgedEmp.size,
-        emps.length - badgedEmp.size ? "neg" : "pos", "no live badge on record");
+      covTile("Not badged", notBadged, notBadged ? "neg" : "pos", "no live badge anywhere");
   const q = bq.trim().toLowerCase();
   let rows = all.filter(r => {
     if (bstat !== ALL && stat(r) !== bstat) return false;
@@ -646,9 +655,9 @@ function renderDrill(){
     <span class="sub">${rows.length.toLocaleString()} row${rows.length===1?"":"s"}
     &middot; sorted most urgent first</span>`;
   const cols = ["Emp ID","Employee","Position","Badge #","Type","Expires","Status",
-    "Badge location","Actions"];
+    "Based at","Actions"];
   const widths = "80px minmax(150px,1.5fr) minmax(100px,1fr) minmax(105px,1.05fr) " +
-    "minmax(90px,.9fr) 82px 106px 96px 150px";
+    "minmax(90px,.9fr) 82px 118px 100px 150px";
   const head = `<div class="grow hrow">${cols.map(c => `<div class="cell">${c}</div>`).join("")}</div>`;
   const shown = rows.slice(0, ROWCAP);
   const body = shown.map((r, i) => {
@@ -657,17 +666,21 @@ function renderDrill(){
     const acts = b
       ? `<span class="rowact"><button data-act="renew" data-bid="${esc(b[0])}">Renew</button>` +
         `<button class="danger" data-act="deact" data-bid="${esc(b[0])}">Deact.</button></span>`
+      : r.away ? "&mdash;"
       : `<span class="rowact"><button data-act="newfor" data-eid="${esc(e[0])}"
           data-name="${esc(e[1])}">&#65291; New badge</button></span>`;
-    // a badge at a different airport than the labor dist = multi-airport
-    // access (regional roles, cross-airport work) - marked, not hidden
-    const cross = b && !unm && b[9]
-      && b[9].split(" ")[0].toUpperCase() !== covLD.split(" ")[0].toUpperCase();
-    const locCell = !b ? "&mdash;"
-      : cross ? `<span style="color:var(--orange);font-weight:700"
-          title="multi-airport: badge held at a different airport than this labor
-          distribution">&#9992;&#65039; ${esc(b[9])}</span>`
-      : esc(b[9]) || "&mdash;";
+    // Based at = the HOLDER's labor dist; a visitor's badge (holder based in
+    // another folder) gets the plane marker - the badge itself belongs here
+    const visitor = b && !unm && b[10] && b[10] !== covLD;
+    const basedCell = !b ? "&mdash;"
+      : visitor ? `<span style="color:var(--orange);font-weight:700"
+          title="held by someone based at another location - the badge belongs
+          to this one">&#9992;&#65039; ${esc(b[10])}</span>`
+      : esc(b[10]) || "&mdash;";
+    const statCell = r.away
+      ? `<span style="font-size:12px;color:var(--muted)" title="holds a live badge
+          filed at another location">&#9992;&#65039; badged at ${esc(r.away.join(", "))}</span>`
+      : `<span class="pill ${PILLC[stat(r)] || "unknown"}">${esc(stat(r))}</span>`;
     return `<div class="grow ${i%2?"oddrow":""}${hl}"${b ? ` id="bdg-${esc(b[0])}"` : ""}>
     <div class="cell">${esc(b ? b[1] : e[0]) || "&mdash;"}</div>
     <div class="cell" style="font-weight:600">${esc(b ? b[2] : e[1])}</div>
@@ -675,8 +688,8 @@ function renderDrill(){
     <div class="cell">${b ? esc(b[4]) || "&mdash;" : "&mdash;"}</div>
     <div class="cell">${b ? esc(b[5]) || "&mdash;" : "&mdash;"}</div>
     <div class="cell">${b ? bfmt(b[6]) : "&mdash;"}</div>
-    <div class="cell"><span class="pill ${PILLC[stat(r)] || "unknown"}">${esc(stat(r))}</span></div>
-    <div class="cell">${locCell}</div>
+    <div class="cell">${statCell}</div>
+    <div class="cell">${basedCell}</div>
     <div class="cell">${acts}</div></div>`; }).join("");
   $("#bbody").innerHTML = rows.length
     ? `<div class="grid" style="min-width:1040px;grid-template-columns:${widths}">${head}${body}</div>`
@@ -689,13 +702,13 @@ function renderDrill(){
     ? `<p>Badge records whose Employee ID matches nothing in Current, Terminated, or
       Basic Employee Info. Fix the ID in <b>Badges.csv</b> (Definitive Lists) and the
       record joins its labor distribution at the next refresh.</p>`
-    : `<p>Every current employee of <b>${esc(covLD)}</b>, one row per badge (employees
-      with several badges appear once per badge). Badge data as of
-      <b>${esc(DATA.badgesAsof)}</b>; <b>Expiring</b> = within ${DATA.badgeSoonDays}
-      days. <span style="color:var(--orange);font-weight:700">&#9992;&#65039;</span>
-      marks a badge held at a <b>different airport</b> than this labor distribution
-      &mdash; normal for regional roles and cross-airport work (e.g. TPA&harr;PIE);
-      each airport issues its own badge.</p>`;
+    : `<p>The badges <b>filed to ${esc(covLD)}</b> (whoever holds them) plus this
+      location's own people. Badge data as of <b>${esc(DATA.badgesAsof)}</b>;
+      <b>Expiring</b> = within ${DATA.badgeSoonDays} days.
+      <span style="color:var(--orange);font-weight:700">&#9992;&#65039;</span> on a badge
+      row = held by someone based at another location (regional roles); on a person
+      row = this employee's badges are filed at other locations. Each airport issues
+      its own badge, so multi-airport people appear in several folders.</p>`;
 }
 
 function renderBadges(){

@@ -49,12 +49,16 @@ two top tabs — Training | Badges — with Active/Terminated sub-views inside B
   Unmatched records are kept and labeled (never guessed, never dropped).
   A badge with Returned = Yes always renders in the Deactivated view, never active;
   the Returned column is shown only there.
-- **Sub-views (two):** Coverage — the entry view: one row per labor distribution
-  (employees / badged / not badged / badges / active / expiring / expired /
-  coverage %; employee counts from Current Employees.csv); clicking a row drills
-  into that labor dist's PEOPLE — every current employee, one row per badge,
-  unbadged employees shown Not Badged with a prefilled New-badge action; a special
-  "Unmatched records" row holds badges whose Employee ID matches nothing.
+- **Sub-views (two):** Coverage — the entry view: one row per FOLDER (all labor
+  distributions plus any badge-only locations like SRQ; employee counts from
+  Current Employees.csv, badge counts by where the badge is FILED). Badges file
+  by badge location, which was rewritten to the official folder vocabulary
+  (Clara's decision sheet + rule: single-candidate airport, else holder's own
+  labor dist). Clicking a folder drills in: the badges filed there (a visitor's
+  badge shows "Based at" with a plane marker), the folder's own people, unbadged
+  employees with a prefilled New-badge action, and "badged elsewhere" markers for
+  people whose badges are filed at other folders. A special "Unmatched records"
+  row holds badges whose Employee ID matches nothing.
   Deactivated — badge-keyed: any Deactivated/Termed/returned badge plus every badge
   of a terminated employee; its pill shows the deactivation REASON.
   Statuses (Active / Expiring 30d / Expired) recompute at each build.

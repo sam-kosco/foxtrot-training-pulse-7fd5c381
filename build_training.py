@@ -386,13 +386,15 @@ def main():
     #      "Badged" = holds at least one live badge with a real number
     #      (not deactivated/termed/returned). Employee counts come from
     #      Current Employees.csv, so the axis is the HR labor dist.
-    live_badged = set()
+    live_badged, live_locs = set(), set()
     for b in badge_rows:
         if (b[4] and b[7] in ("Active", "Expiring", "Expired", "Unknown")
                 and b[8] != "Yes"):
             bnid = norm_eid(b[1])
             if bnid:
                 live_badged.add(bnid)
+            if b[9] and b[11] != "Unmatched":
+                live_locs.add(b[9])
     cov_agg = {}
     for cid, (_st, clabor, _pos, _cn) in cur_emp.items():
         ld = clabor or "(no labor dist)"
@@ -400,7 +402,10 @@ def main():
         c[0] += 1
         if cid in live_badged:
             c[1] += 1
-    coverage = [[ld, v[0], v[1]] for ld, v in sorted(cov_agg.items())]
+    # folders = every labor dist with employees PLUS every location that has
+    # live badges filed to it (e.g. SRQ badges with no matching labor dist)
+    folders = sorted(set(cov_agg) | live_locs)
+    coverage = [[ld, *cov_agg.get(ld, [0, 0])] for ld in folders]
     # per-employee list for the coverage drill-down (one row per current
     # employee: id, name, labor dist, position)
     employees = sorted(
