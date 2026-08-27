@@ -87,6 +87,8 @@ select:focus-visible{outline:2px solid var(--orange);outline-offset:1px}
 .stab.on{background:var(--navy);border-color:var(--navy);color:#fff}
 .stab:focus-visible{outline:2px solid var(--orange);outline-offset:1px}
 .stab .pill{margin-left:6px}
+.covrow{cursor:pointer}
+.covrow:hover .cell{background:#fdf1e0!important}
 .pill{display:inline-block;font-size:11.5px;font-weight:700;border-radius:999px;padding:2px 10px}
 .pill.active{background:#e3f4ea;color:#136f42}
 .pill.expiring{background:#fdf1dc;color:#8a5a0a}
@@ -207,9 +209,8 @@ input.search:focus{outline:none;border-color:var(--orange)}
 <div id="view-badges" style="display:none">
   <h2 id="btitle">Badge Compliance <span class="sub">&middot; airport badges by location</span></h2>
   <div class="subtabs" role="tablist" aria-label="Badge views">
-    <button class="stab on" id="sub-active" role="tab" aria-selected="true">Active badges</button>
+    <button class="stab on" id="sub-cov" role="tab" aria-selected="true">Coverage</button>
     <button class="stab" id="sub-termed" role="tab" aria-selected="false">Deactivated</button>
-    <button class="stab" id="sub-cov" role="tab" aria-selected="false">Coverage</button>
   </div>
   <div class="controls">
     <label for="bloc" id="bloc-l">Location</label>
@@ -221,9 +222,9 @@ input.search:focus{outline:none;border-color:var(--orange)}
       aria-label="Search badges">
   </div>
   <div class="actbar">
+    <button class="btn ghost" id="btn-back" style="display:none">&larr; All labor distributions</button>
     <button class="btn primary" id="btn-new">&#65291; New Badge</button>
-    <span style="font-size:12.5px;color:var(--muted)">Renew or deactivate a badge from its
-      row in the table below.</span>
+    <span style="font-size:12.5px;color:var(--muted)" id="act-hint"></span>
   </div>
   <div class="card" id="balerts" style="display:none">
     <div class="hd"></div>
@@ -253,8 +254,9 @@ const ALL = "__ALL__";
 const ROWCAP = 600, THRESH = 0.20;
 
 let rm = ALL, loc = ALL;
-let tab = "training", bview = "active", bloc = ALL, bstat = ALL, bq = "";
-// deep links: #badge/BDG-0012 opens the Badges tab with that row highlighted;
+let tab = "training", bview = "cov", covLD = null, bloc = ALL, bstat = ALL, bq = "";
+const UNM = "__UNMATCHED__";   // pseudo labor dist: unmatched badge records
+// deep links: #badge/BDG-0012 opens that badge's view with the row highlighted;
 // #renew/BDG-0012 additionally opens the renewal form for that badge
 const DEEPRENEW = (location.hash.match(/^#renew\/([\w-]+)/i) || [])[1] || null;
 const DEEP = (location.hash.match(/^#badge\/([\w-]+)/i) || [])[1] || DEEPRENEW;
@@ -263,24 +265,28 @@ try{
   if (s.rm === ALL || DATA.managers[s.rm]) rm = s.rm ?? ALL;
   if (s.loc === ALL || DATA.locations.includes(s.loc)) loc = s.loc ?? ALL;
   if (s.tab === "badges") tab = "badges";
-  if (s.bview === "termed" || s.bview === "cov") bview = s.bview;
-  if (s.bloc === ALL || DATA.badgeLocs.includes(s.bloc)) bloc = s.bloc ?? ALL;
+  if (s.bview === "termed") bview = "termed";
+  if (s.covLD === UNM || DATA.coverage.some(c => c[0] === s.covLD)) covLD = s.covLD;
   if (typeof s.bstat === "string") bstat = s.bstat;
 }catch(e){}
-if (DEEP || location.hash === "#badges") tab = "badges";
+if (DEEP || location.hash === "#badges" || location.hash === "#coverage") tab = "badges";
 else if (location.hash === "#termed" || location.hash === "#deactivated") {
   tab = "badges"; bview = "termed";
 }
-else if (location.hash === "#coverage") { tab = "badges"; bview = "cov"; }
 else if (location.hash === "#training") tab = "training";
 if (DEEP) {   // never let a saved filter or the wrong sub-view hide the linked badge
-  bloc = ALL; bstat = ALL;
+  bstat = ALL; bq = "";
   const d = DATA.badges.find(b => b[0] === DEEP);
-  bview = d && (["Terminated","Retired","Deceased"].includes(d[11])
-    || d[7] === "Termed" || d[7] === "Deactivated") ? "termed" : "active";
+  if (d && (["Terminated","Retired","Deceased"].includes(d[11])
+      || d[7] === "Termed" || d[7] === "Deactivated" || d[8] === "Yes")) {
+    bview = "termed";
+  } else {
+    bview = "cov";
+    covLD = d ? (d[11] === "Unmatched" ? UNM : (d[10] || "(no labor dist)")) : covLD;
+  }
 }
 function saveState(){ sessionStorage.setItem("tp-state",
-  JSON.stringify({rm, loc, tab, bview, bloc, bstat})); }
+  JSON.stringify({rm, loc, tab, bview, covLD, bstat})); }
 
 // reverse map: location -> managers
 const locMgrs = {};
@@ -509,8 +515,26 @@ const RPILL = {"Employee terminated":"termed", "Location closed":"notbadged",
   "Lost or damaged":"expired", "Employee transferred":"expiring",
   "Expired / replaced":"unknown", "Other":"unknown"};
 
+// live badge rows (not deactivated/termed/returned/number-less) grouped by
+// the employee's labor dist; unmatched records grouped under UNM
+function ldBadgeStats(){
+  const m = {};
+  DATA.badges.forEach(b => {
+    if (isTermRow(b) || b[7] === "Not Badged") return;
+    const k = b[11] === "Unmatched" ? UNM : (b[10] || "(no labor dist)");
+    const s = m[k] = m[k] || {t: 0, Active: 0, Expiring: 0, Expired: 0, Unknown: 0};
+    s.t++;
+    if (s[b[7]] !== undefined) s[b[7]]++;
+  });
+  return m;
+}
+const covTile = (lab, v, cls, sub) => `<div class="kpi"><div class="kpi-label">${lab}</div>
+  <div class="kpi-val ${cls}">${v}</div><div class="kpi-sub">${sub}</div></div>`;
+
 function renderCoverage(){
+  if (covLD) return renderDrill();
   $("#balerts").style.display = "none";
+  const stats = ldBadgeStats();
   const q = bq.trim().toLowerCase();
   const rows = DATA.coverage.filter(c => !q || c[0].toLowerCase().includes(q));
   const totE = rows.reduce((s, c) => s + c[1], 0);
@@ -518,39 +542,149 @@ function renderCoverage(){
   const pct = e => e[1] ? Math.round(100 * e[2] / e[1]) : 0;
   const totP = totE ? Math.round(100 * totB / totE) : 0;
   const covPill = p => p >= 90 ? "active" : p >= 70 ? "expiring" : "expired";
-  const tile = (lab, v, cls, sub) => `<div class="kpi"><div class="kpi-label">${lab}</div>
-    <div class="kpi-val ${cls}">${v}</div><div class="kpi-sub">${sub}</div></div>`;
+  const sum = k => rows.reduce((s, c) => s + ((stats[c[0]] || {})[k] || 0), 0);
   $("#bkpis").innerHTML =
-    tile("Current employees", totE.toLocaleString(), "", "from Current Employees.csv") +
-    tile("Badged", totB.toLocaleString(), "pos", "hold at least one live badge") +
-    tile("Not badged", (totE - totB).toLocaleString(), totE - totB ? "neg" : "pos",
-      "no live badge on record") +
-    tile("Coverage", totP + "%", totP >= 90 ? "pos" : "neg", "badged &divide; employees");
+    covTile("Current employees", totE.toLocaleString(), "", "from Current Employees.csv") +
+    covTile("Badged", totB.toLocaleString(), "pos", "hold at least one live badge") +
+    covTile("Expiring soon", sum("Expiring"), sum("Expiring") ? "neg" : "pos",
+      "within " + DATA.badgeSoonDays + " days") +
+    covTile("Expired", sum("Expired"), sum("Expired") ? "neg" : "pos", "past their date") +
+    covTile("Coverage", totP + "%", totP >= 90 ? "pos" : "neg", "badged &divide; employees");
   $("#bhd").innerHTML = `Employed vs badged
     <span class="sub">${rows.length} labor distribution${rows.length===1?"":"s"}
-    &middot; badge records vs the current-employee roster</span>`;
+    &middot; click a row to open its people and badges</span>`;
+  const num = (v, color) => `<div class="cell num"${color
+    ? ` style="color:${color};font-weight:700"` : ""}>${v}</div>`;
   const head = `<div class="grow hrow"><div class="cell">Labor Dist</div>
     <div class="cell num">Employees</div><div class="cell num">Badged</div>
-    <div class="cell num">Not badged</div><div class="cell num">Coverage</div></div>`;
-  const body = rows.map((c, i) => `<div class="grow ${i%2?"oddrow":""}">
-    <div class="cell" style="font-weight:600">${esc(c[0])}</div>
+    <div class="cell num">Not badged</div><div class="cell num">Badges</div>
+    <div class="cell num">Active</div><div class="cell num">Expiring</div>
+    <div class="cell num">Expired</div><div class="cell num">Coverage</div></div>`;
+  let body = rows.map((c, i) => {
+    const s = stats[c[0]] || {t: 0, Active: 0, Expiring: 0, Expired: 0};
+    return `<div class="grow covrow ${i%2?"oddrow":""}" data-ld="${esc(c[0])}">
+    <div class="cell" style="font-weight:600">${esc(c[0])} &rsaquo;</div>
     <div class="cell num">${c[1]}</div>
     <div class="cell num">${c[2]}</div>
     <div class="cell num">${c[1] - c[2]}</div>
+    <div class="cell num">${s.t}</div>
+    <div class="cell num">${s.Active}</div>
+    ${num(s.Expiring, s.Expiring ? "#b45309" : "")}
+    ${num(s.Expired, s.Expired ? "var(--bad)" : "")}
     <div class="cell num"><span class="pill ${covPill(pct(c))}">${pct(c)}%</span></div>
-  </div>`).join("");
-  $("#bbody").innerHTML = rows.length
-    ? `<div class="grid" style="min-width:640px;grid-template-columns:
-        minmax(160px,1.6fr) 110px 100px 110px 110px">${head}${body}</div>`
+  </div>`; }).join("");
+  const unmN = (stats[UNM] || {}).t || 0;
+  if (unmN && !q) body += `<div class="grow covrow" data-ld="${UNM}">
+    <div class="cell" style="font-weight:600;color:var(--bad)">&#9888;&#65039; Unmatched
+      records &rsaquo;</div>
+    <div class="cell num">&mdash;</div><div class="cell num">&mdash;</div>
+    <div class="cell num">&mdash;</div><div class="cell num">${unmN}</div>
+    <div class="cell num">&mdash;</div><div class="cell num">&mdash;</div>
+    <div class="cell num">&mdash;</div><div class="cell num">&mdash;</div></div>`;
+  $("#bbody").innerHTML = rows.length || unmN
+    ? `<div class="grid" style="min-width:980px;grid-template-columns:
+        minmax(170px,1.7fr) 92px 76px 96px 76px 72px 76px 72px 96px">${head}${body}</div>`
     : `<div style="padding:14px;color:var(--muted)">No labor distributions match.</div>`;
   $("#bcap").style.display = "none";
   $("#bnote").innerHTML = `<p><b>Badged</b> = the employee holds at least one live badge
     with a real badge number (not deactivated or returned), matched by Employee ID.
-    Some labor distributions don't require airport badges, so low coverage there is
-    expected &mdash; the badge-required location list will refine this later.
-    Color guide: <span class="pill active">90%+</span>
+    Badge counts (Badges/Active/Expiring/Expired) are the badges held by that labor
+    distribution's employees. Some labor distributions don't require airport badges,
+    so low coverage there is expected. Coverage colors:
+    <span class="pill active">90%+</span>
     <span class="pill expiring">70&ndash;89%</span>
     <span class="pill expired">under 70%</span>.</p>`;
+}
+
+function renderDrill(){
+  $("#balerts").style.display = "none";
+  const unm = covLD === UNM;
+  const liveRows = DATA.badges.filter(b => !isTermRow(b) && b[7] !== "Not Badged");
+  let all = [];   // {b: badgeRow|null, e: [eid,name,ld,pos]|null}
+  let emps = [];
+  if (unm){
+    DATA.badges.filter(b => b[11] === "Unmatched" && !isTermRow(b))
+      .forEach(b => all.push({b, e: null}));
+  } else {
+    emps = DATA.employees.filter(e => e[2] === covLD);
+    const byEid = {};
+    liveRows.forEach(b => {
+      const k = b[1].replace(/\D/g, "");
+      if (k) (byEid[k] = byEid[k] || []).push(b);
+    });
+    emps.forEach(e => {
+      const bs = byEid[e[0]] || [];
+      if (bs.length) bs.forEach(b => all.push({b, e}));
+      else all.push({b: null, e});
+    });
+  }
+  const stat = r => r.b ? r.b[7] : "Not Badged";
+  const cnt = st => all.filter(r => stat(r) === st).length;
+  const badgedEmp = new Set(all.filter(r => r.b && r.e).map(r => r.e[0]));
+  $("#bkpis").innerHTML = unm
+    ? covTile("Unmatched records", all.length, all.length ? "neg" : "pos",
+        "no Employee ID match anywhere — fix in Badges.csv")
+    : covTile("Employees", emps.length, "", esc(covLD)) +
+      covTile("Total badges", all.filter(r => r.b).length, "", "held by these employees") +
+      covTile("Active", cnt("Active"), "pos", "more than " + DATA.badgeSoonDays + " days left") +
+      covTile("Expiring soon", cnt("Expiring"), cnt("Expiring") ? "neg" : "pos",
+        "within " + DATA.badgeSoonDays + " days") +
+      covTile("Expired", cnt("Expired"), cnt("Expired") ? "neg" : "pos", "past their date") +
+      covTile("Not badged", emps.length - badgedEmp.size,
+        emps.length - badgedEmp.size ? "neg" : "pos", "no live badge on record");
+  const q = bq.trim().toLowerCase();
+  let rows = all.filter(r => {
+    if (bstat !== ALL && stat(r) !== bstat) return false;
+    if (!q) return true;
+    const hay = r.b ? [r.b[0], r.b[1], r.b[2], r.b[4]] : [r.e[0], r.e[1]];
+    return hay.some(v => String(v).toLowerCase().includes(q));
+  });
+  const ord = {Expired: 0, Expiring: 1, Unknown: 2, Active: 3, "Not Badged": 4};
+  rows.sort((a, b2) => (ord[stat(a)] ?? 9) - (ord[stat(b2)] ?? 9)
+    || (a.b ? a.b[2] : a.e[1]).localeCompare(b2.b ? b2.b[2] : b2.e[1]));
+  $("#bhd").innerHTML = `${unm ? "Unmatched badge records" : "People &amp; badges"}
+    <span class="sub">${rows.length.toLocaleString()} row${rows.length===1?"":"s"}
+    &middot; sorted most urgent first</span>`;
+  const cols = ["Emp ID","Employee","Position","Badge #","Type","Expires","Status",
+    "Badge location","Actions"];
+  const widths = "80px minmax(150px,1.5fr) minmax(100px,1fr) minmax(105px,1.05fr) " +
+    "minmax(90px,.9fr) 82px 106px 96px 150px";
+  const head = `<div class="grow hrow">${cols.map(c => `<div class="cell">${c}</div>`).join("")}</div>`;
+  const shown = rows.slice(0, ROWCAP);
+  const body = shown.map((r, i) => {
+    const b = r.b, e = r.e;
+    const hl = b && DEEP && b[0] === DEEP ? " hlrow" : "";
+    const acts = b
+      ? `<span class="rowact"><button data-act="renew" data-bid="${esc(b[0])}">Renew</button>` +
+        `<button class="danger" data-act="deact" data-bid="${esc(b[0])}">Deact.</button></span>`
+      : `<span class="rowact"><button data-act="newfor" data-eid="${esc(e[0])}"
+          data-name="${esc(e[1])}">&#65291; New badge</button></span>`;
+    return `<div class="grow ${i%2?"oddrow":""}${hl}"${b ? ` id="bdg-${esc(b[0])}"` : ""}>
+    <div class="cell">${esc(b ? b[1] : e[0]) || "&mdash;"}</div>
+    <div class="cell" style="font-weight:600">${esc(b ? b[2] : e[1])}</div>
+    <div class="cell">${esc(b ? b[3] : e[3]) || "&mdash;"}</div>
+    <div class="cell">${b ? esc(b[4]) || "&mdash;" : "&mdash;"}</div>
+    <div class="cell">${b ? esc(b[5]) || "&mdash;" : "&mdash;"}</div>
+    <div class="cell">${b ? bfmt(b[6]) : "&mdash;"}</div>
+    <div class="cell"><span class="pill ${PILLC[stat(r)] || "unknown"}">${esc(stat(r))}</span></div>
+    <div class="cell">${b ? esc(b[9]) || "&mdash;" : "&mdash;"}</div>
+    <div class="cell">${acts}</div></div>`; }).join("");
+  $("#bbody").innerHTML = rows.length
+    ? `<div class="grid" style="min-width:1040px;grid-template-columns:${widths}">${head}${body}</div>`
+    : `<div style="padding:14px;color:var(--muted)">Nothing matches this filter.</div>`;
+  const cap = $("#bcap");
+  cap.style.display = rows.length > ROWCAP ? "" : "none";
+  if (rows.length > ROWCAP) cap.textContent =
+    `Showing the first ${ROWCAP} of ${rows.length.toLocaleString()} rows — narrow the filter.`;
+  $("#bnote").innerHTML = unm
+    ? `<p>Badge records whose Employee ID matches nothing in Current, Terminated, or
+      Basic Employee Info. Fix the ID in <b>Badges.csv</b> (Definitive Lists) and the
+      record joins its labor distribution at the next refresh.</p>`
+    : `<p>Every current employee of <b>${esc(covLD)}</b>, one row per badge (employees
+      with several badges appear once per badge). Badge data as of
+      <b>${esc(DATA.badgesAsof)}</b>; <b>Expiring</b> = within ${DATA.badgeSoonDays}
+      days. Badge location is where the badge belongs &mdash; it can differ from the
+      labor distribution.</p>`;
 }
 
 function renderBadges(){
@@ -689,19 +823,25 @@ function applyTab(){
     $("#tab-" + t).classList.toggle("on", tab === t);
     $("#tab-" + t).setAttribute("aria-selected", tab === t);
   });
-  [["sub-active","active"],["sub-termed","termed"],["sub-cov","cov"]].forEach(([id, v]) => {
+  [["sub-cov","cov"],["sub-termed","termed"]].forEach(([id, v]) => {
     $("#" + id).classList.toggle("on", bview === v);
     $("#" + id).setAttribute("aria-selected", String(bview === v));
   });
   const cov = bview === "cov";
-  $("#btn-new").style.display = bview === "active" ? "" : "none";
-  ["bloc","bloc-l","bstat","bstat-l"].forEach(id =>
-    $("#" + id).style.display = cov ? "none" : "");
+  const drilled = cov && covLD;
+  $("#btn-new").style.display = cov ? "" : "none";
+  $("#btn-back").style.display = drilled ? "" : "none";
+  $("#act-hint").textContent = drilled
+    ? "Renew or deactivate from a row; the New badge row button pre-fills the employee."
+    : cov ? "Click a labor distribution to see its people and badges." : "";
+  ["bloc","bloc-l"].forEach(id => $("#" + id).style.display = "none");
+  ["bstat","bstat-l"].forEach(id => $("#" + id).style.display = drilled ? "" : "none");
   $("#btitle").innerHTML = bview === "termed"
     ? `Deactivated Badges <span class="sub">&middot; closed-out badges and terminated employees</span>`
-    : cov
-    ? `Badge Coverage <span class="sub">&middot; employed vs badged, by labor distribution</span>`
-    : `Badge Compliance <span class="sub">&middot; airport badges by location</span>`;
+    : drilled
+    ? `${covLD === UNM ? "Unmatched Records" : esc(covLD)}
+       <span class="sub">&middot; people and badges</span>`
+    : `Badge Coverage <span class="sub">&middot; employed vs badged, by labor distribution</span>`;
 }
 
 /* ---------- badge action forms ----------
@@ -737,7 +877,7 @@ function showPreview(payload){
   $("#f-close").onclick = closeModal;
 }
 
-function openNewBadge(){
+function openNewBadge(prefillName, prefillEid){
   openModal("New Badge", `
     ${frow("Employee", `<input id="f-emp" list="emplist" placeholder="start typing a name&hellip;"
         autocomplete="off">
@@ -754,12 +894,17 @@ function openNewBadge(){
     <div class="btnrow"><button class="btn ghost" id="f-cancel">Cancel</button>
       <button class="btn primary" id="f-save">Create badge</button></div>`);
   const info = $("#f-empinfo");
-  $("#f-emp").addEventListener("input", e => {
-    const r = EMP[e.target.value];
+  const syncInfo = () => {
+    const r = EMP[$("#f-emp").value];
     info.style.display = r ? "" : "none";
     if (r) info.innerHTML = `Emp ID: <b>${esc(r[0])}</b> &middot; ${esc(r[3]) || "&mdash;"}
       &middot; home: ${esc(r[2]) || "&mdash;"}`;
-  });
+  };
+  $("#f-emp").addEventListener("input", syncInfo);
+  if (prefillName && prefillEid){
+    $("#f-emp").value = `${prefillName} — ${prefillEid}`;
+    syncInfo();
+  }
   $("#f-cancel").onclick = closeModal;
   $("#f-save").onclick = () => {
     const r = EMP[$("#f-emp").value], err = $("#f-err");
@@ -911,10 +1056,6 @@ $("#tab-badges").addEventListener("click", () => {
     bview === "termed" ? "#deactivated" : bview === "cov" ? "#coverage" : "#badges");
   saveState(); applyTab(); renderBadges();
 });
-$("#sub-active").addEventListener("click", () => {
-  bview = "active"; history.replaceState(null, "", "#badges");
-  saveState(); applyTab(); renderBadges();
-});
 $("#sub-termed").addEventListener("click", () => {
   bview = "termed"; history.replaceState(null, "", "#deactivated");
   saveState(); applyTab(); renderBadges();
@@ -923,18 +1064,29 @@ $("#sub-cov").addEventListener("click", () => {
   bview = "cov"; history.replaceState(null, "", "#coverage");
   saveState(); applyTab(); renderBadges();
 });
+$("#btn-back").addEventListener("click", () => {
+  covLD = null; saveState(); applyTab(); renderBadges();
+});
 if (DATA.alerts && DATA.alerts.length)
   $("#sub-termed").innerHTML =
     `Deactivated <span class="pill expired">${DATA.alerts.length}</span>`;
 $("#bloc").addEventListener("change", e => { bloc = e.target.value; saveState(); renderBadges(); });
 $("#bstat").addEventListener("change", e => { bstat = e.target.value; saveState(); renderBadges(); });
 $("#bsearch").addEventListener("input", e => { bq = e.target.value; renderBadges(); });
-$("#btn-new").addEventListener("click", openNewBadge);
+$("#btn-new").addEventListener("click", () => openNewBadge());
 $("#bbody").addEventListener("click", e => {
   const btn = e.target.closest("button[data-act]");
-  if (!btn) return;
-  if (btn.dataset.act === "renew") openRenew(btn.dataset.bid);
-  else openDeactivate(btn.dataset.bid);
+  if (btn){
+    if (btn.dataset.act === "renew") openRenew(btn.dataset.bid);
+    else if (btn.dataset.act === "newfor") openNewBadge(btn.dataset.name, btn.dataset.eid);
+    else openDeactivate(btn.dataset.bid);
+    return;
+  }
+  const rr = e.target.closest(".grow[data-ld]");
+  if (rr && bview === "cov" && !covLD){
+    covLD = rr.dataset.ld;
+    saveState(); applyTab(); renderBadges();
+  }
 });
 
 // Reload every 30 minutes so an open tab can never show stale data

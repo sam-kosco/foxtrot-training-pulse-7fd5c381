@@ -284,7 +284,9 @@ def main():
         if cid:
             cur_emp[cid] = (r.get("Status", "").strip() or "Active",
                             r.get("Home Labor Assignment", "").strip(),
-                            r.get("Position", "").strip())
+                            r.get("Position", "").strip(),
+                            f"{r.get('First Name', '').strip()} "
+                            f"{r.get('Last Name', '').strip()}".strip())
     term_emp, term_names = {}, {}
     for r in read_csv("termedcsv"):
         tid = norm_eid(r.get("Employee Id", ""))
@@ -331,7 +333,7 @@ def main():
         # employees (auto-updates on promotion); the badge tracker's
         # hand-typed value survives only for unmatched records
         if nid and nid in cur_emp:
-            es, labor, position = cur_emp[nid]
+            es, labor, position, _cname = cur_emp[nid]
         elif nid and nid in term_emp:
             es = "Terminated"
             labor, position = term_emp[nid]
@@ -391,13 +393,19 @@ def main():
             if bnid:
                 live_badged.add(bnid)
     cov_agg = {}
-    for cid, (_st, clabor, _pos) in cur_emp.items():
+    for cid, (_st, clabor, _pos, _cn) in cur_emp.items():
         ld = clabor or "(no labor dist)"
         c = cov_agg.setdefault(ld, [0, 0])
         c[0] += 1
         if cid in live_badged:
             c[1] += 1
     coverage = [[ld, v[0], v[1]] for ld, v in sorted(cov_agg.items())]
+    # per-employee list for the coverage drill-down (one row per current
+    # employee: id, name, labor dist, position)
+    employees = sorted(
+        ([cid, cn, clabor or "(no labor dist)", cpos]
+         for cid, (_cs, clabor, cpos, cn) in cur_emp.items()),
+        key=lambda e: (e[2], e[1].lower()))
     print(f"coverage: {sum(v[1] for v in cov_agg.values())} of "
           f"{sum(v[0] for v in cov_agg.values())} current employees hold a live "
           f"badge, across {len(coverage)} labor distributions")
@@ -462,6 +470,7 @@ def main():
         "badges": badge_rows,
         "alerts": badge_alerts,
         "coverage": coverage,
+        "employees": employees,
         "roster": roster_min,
         "badgeLocs": sorted(badge_locs),
         "badgeSoonDays": BADGE_SOON_DAYS,

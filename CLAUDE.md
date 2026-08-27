@@ -49,12 +49,14 @@ two top tabs — Training | Badges — with Active/Terminated sub-views inside B
   Unmatched records are kept and labeled (never guessed, never dropped).
   A badge with Returned = Yes always renders in the Deactivated view, never active;
   the Returned column is shown only there.
-- **Sub-views:** Active badges = current employees (plus unmatched); Deactivated =
-  badge-keyed — any badge with status Deactivated/Termed (whatever the employee's
-  status: closed location, transfer, etc.) plus every badge of a terminated
-  employee — its pill column shows the deactivation REASON, not a live status;
-  Coverage = employed vs badged per labor distribution (employee counts from
-  Current Employees.csv; "badged" = holds a live numbered badge).
+- **Sub-views (two):** Coverage — the entry view: one row per labor distribution
+  (employees / badged / not badged / badges / active / expiring / expired /
+  coverage %; employee counts from Current Employees.csv); clicking a row drills
+  into that labor dist's PEOPLE — every current employee, one row per badge,
+  unbadged employees shown Not Badged with a prefilled New-badge action; a special
+  "Unmatched records" row holds badges whose Employee ID matches nothing.
+  Deactivated — badge-keyed: any Deactivated/Termed/returned badge plus every badge
+  of a terminated employee; its pill shows the deactivation REASON.
   Statuses (Active / Expiring 30d / Expired) recompute at each build.
 - **Rules:** a row without a badge number is not a badge (renders Not Badged);
   legacy pre-process records were bulk-closed 2026-08-27 with reason "Employee
