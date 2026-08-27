@@ -369,6 +369,7 @@ def main():
         # terminations going forward); legacy records were bulk-closed at
         # process start (2026-08-27) with prior return status unknown.
         if (es in TERM_GROUP and returned != "Yes"
+                and num and num.upper() != "N/A"
                 and status not in ("Deactivated", "Not Badged")):
             badge_alerts.append([bid, bname, num, bloc, labor,
                                  "; ".join(loc_mgrs.get(labor, [])), es])

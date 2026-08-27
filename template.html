@@ -690,8 +690,11 @@ function renderDrill(){
 function renderBadges(){
   if (bview === "cov") return renderCoverage();
   const termed = bview === "termed";
+  // only rows with a real badge number count as badges here - a terminated
+  // employee who never had one is a person record, not a deactivated badge
+  const hasNum = b => b[4] && b[4].trim().toUpperCase() !== "N/A";
   const scope = DATA.badges.filter(b => (bloc === ALL || b[9] === bloc)
-    && (termed ? isTermRow(b) : !isTermRow(b)));
+    && hasNum(b) && (termed ? isTermRow(b) : !isTermRow(b)));
   const n = st => scope.filter(b => b[7] === st).length;
   const label = bloc === ALL ? "all locations" : bloc;
   const tile = (lab, v, neg, sub) => `<div class="kpi"><div class="kpi-label">${lab}</div>
