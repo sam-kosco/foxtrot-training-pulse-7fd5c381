@@ -108,8 +108,13 @@ def main():
     recent_ids = set()
     hire_by_id = {}          # norm id -> hire date (for the S101 due column)
     alias_by_eid = {}        # norm id -> {normalized "first last"} incl. preferred name
+    basic_emp = {}   # norm id -> (status, labor dist, position): badge join fallback
     for r in read_csv("empinfo"):
         nid = norm_eid(r["Employee Id"])
+        if nid:
+            basic_emp[nid] = (r.get("Employee Status Description", "").strip(),
+                              r.get("Labor Dist Description", "").strip(),
+                              r.get("Position Description", "").strip())
         last = r.get("Last Name", "").strip()
         if last:
             # Both legal and preferred first names, so an LMS row filed under a
@@ -330,6 +335,10 @@ def main():
         elif nid and nid in term_emp:
             es = "Terminated"
             labor, position = term_emp[nid]
+        elif nid and nid in basic_emp:
+            # fallback: Basic Employee Info covers employees the Current /
+            # Terminated extracts miss (gap flagged to Sam 2026-08-27)
+            es, labor, position = basic_emp[nid]
         else:
             tmatch = term_names.get(norm_name(bname))
             if tmatch:
