@@ -52,7 +52,15 @@ two top tabs — Training | Badges — with Active/Terminated sub-views inside B
 - **Sub-views:** Active badges = current employees (plus unmatched); Deactivated =
   badge-keyed — any badge with status Deactivated/Termed (whatever the employee's
   status: closed location, transfer, etc.) plus every badge of a terminated
-  employee. Statuses (Active / Expiring 30d / Expired) recompute at each build.
+  employee — its pill column shows the deactivation REASON, not a live status;
+  Coverage = employed vs badged per labor distribution (employee counts from
+  Current Employees.csv; "badged" = holds a live numbered badge).
+  Statuses (Active / Expiring 30d / Expired) recompute at each build.
+- **Rules:** a row without a badge number is not a badge (renders Not Badged);
+  legacy pre-process records were bulk-closed 2026-08-27 with reason "Employee
+  terminated" and unknown return status (see badge-data/close_out_legacy.py on
+  Clara's machine; backups kept). Alerts = terminated employee whose badge is not
+  yet closed out.
 - **Deactivation reasons** (required dropdown; recorded in the Badges.csv
   `Deactivation Reason` column, receiver in `Received By`): Employee terminated,
   Location closed, Lost or damaged, Employee transferred, Expired / replaced, Other.

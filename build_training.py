@@ -341,6 +341,11 @@ def main():
         bid = r.get("Badge ID", "").strip()
         num = r.get("Badge Number", "").strip()
         returned = r.get("Returned", "").strip()
+        # a row without a badge number is not a badge - it is a person on
+        # record without one (unless it is a closed-out/termed record)
+        if (not num or num.upper() == "N/A") and status not in (
+                "Termed", "Deactivated") and es not in TERM_GROUP:
+            status = "Not Badged"
         badge_rows.append([
             bid, shown_eid, bname,
             position or r.get("Position", "").strip(),
@@ -348,11 +353,12 @@ def main():
             bexp, status, returned, bloc, labor, es,
             r.get("Deactivation Reason", "").strip(),
         ])
-        # alert: terminated employee whose badge was never marked returned.
-        # Deliberately NOT cleared by deactivation alone - only a recorded
-        # return silences it (the badge is still out there otherwise).
+        # alert: terminated employee whose badge has not been closed out.
+        # Cleared by the close-out flow (which requires the return for
+        # terminations going forward); legacy records were bulk-closed at
+        # process start (2026-08-27) with prior return status unknown.
         if (es in TERM_GROUP and returned != "Yes"
-                and status != "Not Badged"):
+                and status not in ("Deactivated", "Not Badged")):
             badge_alerts.append([bid, bname, num, bloc, labor,
                                  "; ".join(loc_mgrs.get(labor, [])), es])
     border = {"Expired": 0, "Expiring": 1, "Unknown": 2, "Active": 3,
@@ -363,6 +369,29 @@ def main():
     print(f"badges: {len(badge_rows)} rows across {len(badge_locs)} locations; "
           f"{n_termed} on the Terminated tab, {n_unmatched} unmatched IDs, "
           f"{len(badge_alerts)} unreturned-badge alerts")
+
+    # ---- Coverage: employed vs badged, grouped by labor distribution.
+    #      "Badged" = holds at least one live badge with a real number
+    #      (not deactivated/termed/returned). Employee counts come from
+    #      Current Employees.csv, so the axis is the HR labor dist.
+    live_badged = set()
+    for b in badge_rows:
+        if (b[4] and b[7] in ("Active", "Expiring", "Expired", "Unknown")
+                and b[8] != "Yes"):
+            bnid = norm_eid(b[1])
+            if bnid:
+                live_badged.add(bnid)
+    cov_agg = {}
+    for cid, (_st, clabor, _pos) in cur_emp.items():
+        ld = clabor or "(no labor dist)"
+        c = cov_agg.setdefault(ld, [0, 0])
+        c[0] += 1
+        if cid in live_badged:
+            c[1] += 1
+    coverage = [[ld, v[0], v[1]] for ld, v in sorted(cov_agg.items())]
+    print(f"coverage: {sum(v[1] for v in cov_agg.values())} of "
+          f"{sum(v[0] for v in cov_agg.values())} current employees hold a live "
+          f"badge, across {len(coverage)} labor distributions")
 
     # ---- Active roster, minimal fields, for the New Badge employee picker
     roster_min = []
@@ -423,6 +452,7 @@ def main():
         "people": people,
         "badges": badge_rows,
         "alerts": badge_alerts,
+        "coverage": coverage,
         "roster": roster_min,
         "badgeLocs": sorted(badge_locs),
         "badgeSoonDays": BADGE_SOON_DAYS,
