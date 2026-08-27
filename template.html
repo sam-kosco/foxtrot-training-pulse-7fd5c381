@@ -659,6 +659,15 @@ function renderDrill(){
         `<button class="danger" data-act="deact" data-bid="${esc(b[0])}">Deact.</button></span>`
       : `<span class="rowact"><button data-act="newfor" data-eid="${esc(e[0])}"
           data-name="${esc(e[1])}">&#65291; New badge</button></span>`;
+    // a badge at a different airport than the labor dist = multi-airport
+    // access (regional roles, cross-airport work) - marked, not hidden
+    const cross = b && !unm && b[9]
+      && b[9].split(" ")[0].toUpperCase() !== covLD.split(" ")[0].toUpperCase();
+    const locCell = !b ? "&mdash;"
+      : cross ? `<span style="color:var(--orange);font-weight:700"
+          title="multi-airport: badge held at a different airport than this labor
+          distribution">&#9992;&#65039; ${esc(b[9])}</span>`
+      : esc(b[9]) || "&mdash;";
     return `<div class="grow ${i%2?"oddrow":""}${hl}"${b ? ` id="bdg-${esc(b[0])}"` : ""}>
     <div class="cell">${esc(b ? b[1] : e[0]) || "&mdash;"}</div>
     <div class="cell" style="font-weight:600">${esc(b ? b[2] : e[1])}</div>
@@ -667,7 +676,7 @@ function renderDrill(){
     <div class="cell">${b ? esc(b[5]) || "&mdash;" : "&mdash;"}</div>
     <div class="cell">${b ? bfmt(b[6]) : "&mdash;"}</div>
     <div class="cell"><span class="pill ${PILLC[stat(r)] || "unknown"}">${esc(stat(r))}</span></div>
-    <div class="cell">${b ? esc(b[9]) || "&mdash;" : "&mdash;"}</div>
+    <div class="cell">${locCell}</div>
     <div class="cell">${acts}</div></div>`; }).join("");
   $("#bbody").innerHTML = rows.length
     ? `<div class="grid" style="min-width:1040px;grid-template-columns:${widths}">${head}${body}</div>`
@@ -683,8 +692,10 @@ function renderDrill(){
     : `<p>Every current employee of <b>${esc(covLD)}</b>, one row per badge (employees
       with several badges appear once per badge). Badge data as of
       <b>${esc(DATA.badgesAsof)}</b>; <b>Expiring</b> = within ${DATA.badgeSoonDays}
-      days. Badge location is where the badge belongs &mdash; it can differ from the
-      labor distribution.</p>`;
+      days. <span style="color:var(--orange);font-weight:700">&#9992;&#65039;</span>
+      marks a badge held at a <b>different airport</b> than this labor distribution
+      &mdash; normal for regional roles and cross-airport work (e.g. TPA&harr;PIE);
+      each airport issues its own badge.</p>`;
 }
 
 function renderBadges(){
