@@ -106,15 +106,18 @@ input.search:focus{outline:none;border-color:var(--orange)}
 .btn.primary:hover{filter:brightness(.94)}
 .btn.ghost{background:none;border:1px solid var(--line);color:var(--ink)}
 .btn:focus-visible{outline:2px solid var(--navy);outline-offset:1px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
 .rowact{display:inline-flex;gap:6px}
 .rowact button{font:inherit;font-size:11.5px;font-weight:700;border:1px solid var(--line);
   background:var(--surface);border-radius:6px;padding:2px 8px;cursor:pointer;color:var(--navy2)}
 .rowact button:hover{border-color:var(--orange);color:var(--orange)}
 .rowact button.danger:hover{border-color:var(--bad);color:var(--bad)}
 #modal{position:fixed;inset:0;background:#0f223899;z-index:60;display:flex;
-  align-items:flex-start;justify-content:center;padding:7vh 14px 0}
+  align-items:flex-start;justify-content:center;
+  padding:calc(4vh / var(--pz,1)) 14px 0}
 .mcard{background:var(--surface);border-radius:12px;width:460px;max-width:100%;
-  box-shadow:0 18px 50px #0007;max-height:84vh;overflow:auto}
+  box-shadow:0 18px 50px #0007;overflow:auto;
+  max-height:calc(90vh / var(--pz,1))}
 .mhd{background:var(--navy);color:#fff;padding:12px 16px;font-weight:700;font-size:15px;
   border-radius:12px 12px 0 0;display:flex;justify-content:space-between;align-items:center;
   position:sticky;top:0}
@@ -129,7 +132,9 @@ input.search:focus{outline:none;border-color:var(--orange)}
 .kv2{font-size:13px;margin-bottom:12px;background:var(--rowtint);border:1px solid var(--line);
   border-radius:8px;padding:10px 12px;line-height:1.7}
 .ferr{color:var(--bad);font-size:12.5px;font-weight:600;min-height:17px;margin-top:4px}
-.btnrow{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}
+.btnrow{display:flex;gap:10px;justify-content:flex-end;margin-top:14px;
+  position:sticky;bottom:0;background:var(--surface);
+  padding:10px 0 4px;border-top:1px solid var(--line)}
 .previewbox{background:var(--navy);color:#c7e3ff;font-family:ui-monospace,Consolas,monospace;
   font-size:12px;padding:12px;border-radius:8px;white-space:pre-wrap;word-break:break-all;
   max-height:240px;overflow:auto}
@@ -231,6 +236,7 @@ input.search:focus{outline:none;border-color:var(--orange)}
     <div class="scroller" id="balertbody"></div>
   </div>
   <div class="kpis" id="bkpis"></div>
+  <div class="kv2" id="bspec" style="display:none"></div>
   <div class="card">
     <div class="hd" id="bhd"></div>
     <div class="vscroll" style="max-height:560px"><div class="scroller" id="bbody"></div></div>
@@ -536,6 +542,7 @@ const covTile = (lab, v, cls, sub) => `<div class="kpi"><div class="kpi-label">$
 function renderCoverage(){
   if (covLD) return renderDrill();
   $("#balerts").style.display = "none";
+  $("#bspec").style.display = "none";
   const stats = ldBadgeStats();
   const q = bq.trim().toLowerCase();
   const rows = DATA.coverage.filter(c => !q || c[0].toLowerCase().includes(q));
@@ -602,6 +609,20 @@ function renderCoverage(){
 function renderDrill(){
   $("#balerts").style.display = "none";
   const unm = covLD === UNM;
+  // the location's standard badge specification, straight from the table
+  const dspec = !unm && DATA.badgeSpecs[covLD];
+  const sp = $("#bspec");
+  if (dspec){
+    sp.style.display = "";
+    sp.innerHTML = dspec[0].toLowerCase() === "no"
+      ? `<b>No Badge Required</b> at ${esc(covLD)}.`
+      : `<b>Badge Type:</b> ${esc(dspec[1]) || "&mdash;"}`
+        + (dspec[2] ? ` &middot; <b>Escort:</b> Yes / No` : "")
+        + (dspec[3] ? ` &middot; <b>${/leadership/i.test(dspec[3])
+            ? "CBP (Leadership Only)" : "CBP Access"}:</b> Yes / No` : "")
+        + (dspec[4] ? ` &middot; <b>AOA Driving Privileges:</b> Yes / No` : "")
+        + (dspec[5] ? ` &middot; <b>${esc(dspec[5])}:</b> Yes / No` : "");
+  } else sp.style.display = "none";
   const liveRows = DATA.badges.filter(b => !isTermRow(b) && b[7] !== "Not Badged");
   let all = [];   // {b: badgeRow|null, e: [eid,name,ld,pos]|null}
   let emps = [];
@@ -654,10 +675,23 @@ function renderDrill(){
   $("#bhd").innerHTML = `${unm ? "Unmatched badge records" : "People &amp; badges"}
     <span class="sub">${rows.length.toLocaleString()} row${rows.length===1?"":"s"}
     &middot; sorted most urgent first</span>`;
-  const cols = ["Emp ID","Employee","Position","Badge #","Type","Expires","Status",
-    "Based at","Actions"];
+  // per-location specification columns: exactly the questions this
+  // location's spec defines, showing each badge's recorded answer
+  const specCols = [];
+  if (dspec && dspec[0].toLowerCase() !== "no"){
+    if (dspec[2]) specCols.push(["Escort", 13, "Escort"]);
+    if (dspec[3]) specCols.push([/leadership/i.test(dspec[3])
+      ? "CBP (Leadership Only)" : "CBP Access", 14, "CBP"]);
+    if (dspec[4]) specCols.push(["AOA Driving Privileges", 15, "AOA Drv"]);
+    if (dspec[5]) specCols.push([dspec[5], 16,
+      dspec[5].length > 14 ? "Extra access" : dspec[5]]);
+  }
+  const cols = ["Emp ID","Employee","Position","Badge #","Type"]
+    .concat(specCols.map(c => `<span title="${esc(c[0])}">${esc(c[2])}</span>`))
+    .concat(["Expires","Status","Based at","Actions"]);
   const widths = "80px minmax(150px,1.5fr) minmax(100px,1fr) minmax(105px,1.05fr) " +
-    "minmax(90px,.9fr) 82px 118px 100px 150px";
+    "minmax(90px,.9fr) " + "72px ".repeat(specCols.length) +
+    "82px 118px 100px 150px";
   const head = `<div class="grow hrow">${cols.map(c => `<div class="cell">${c}</div>`).join("")}</div>`;
   const shown = rows.slice(0, ROWCAP);
   const body = shown.map((r, i) => {
@@ -681,18 +715,29 @@ function renderDrill(){
       ? `<span style="font-size:12px;color:var(--muted)" title="holds a live badge
           filed at another location">&#9992;&#65039; badged at ${esc(r.away.join(", "))}</span>`
       : `<span class="pill ${PILLC[stat(r)] || "unknown"}">${esc(stat(r))}</span>`;
+    const specCells = specCols.map(([full, idx]) => {
+      if (!b) return `<div class="cell">&mdash;</div>`;
+      let v = b[idx] || "";
+      if (idx === 16){                       // extra answers store "Label: Yes"
+        const m = /(Yes|No)\s*$/i.exec(v);
+        v = m ? m[1] : v;
+      }
+      return `<div class="cell" title="${esc(full)}">${esc(v) || "&mdash;"}</div>`;
+    }).join("");
     return `<div class="grow ${i%2?"oddrow":""}${hl}"${b ? ` id="bdg-${esc(b[0])}"` : ""}>
     <div class="cell">${esc(b ? b[1] : e[0]) || "&mdash;"}</div>
     <div class="cell" style="font-weight:600">${esc(b ? b[2] : e[1])}</div>
     <div class="cell">${esc(b ? b[3] : e[3]) || "&mdash;"}</div>
     <div class="cell">${b ? esc(b[4]) || "&mdash;" : "&mdash;"}</div>
     <div class="cell">${b ? esc(b[5]) || "&mdash;" : "&mdash;"}</div>
+    ${specCells}
     <div class="cell">${b ? bfmt(b[6]) : "&mdash;"}</div>
     <div class="cell">${statCell}</div>
     <div class="cell">${basedCell}</div>
     <div class="cell">${acts}</div></div>`; }).join("");
   $("#bbody").innerHTML = rows.length
-    ? `<div class="grid" style="min-width:1040px;grid-template-columns:${widths}">${head}${body}</div>`
+    ? `<div class="grid" style="min-width:${1040 + specCols.length * 72}px;
+        grid-template-columns:${widths}">${head}${body}</div>`
     : `<div style="padding:14px;color:var(--muted)">Nothing matches this filter.</div>`;
   const cap = $("#bcap");
   cap.style.display = rows.length > ROWCAP ? "" : "none";
@@ -713,6 +758,7 @@ function renderDrill(){
 
 function renderBadges(){
   if (bview === "cov") return renderCoverage();
+  $("#bspec").style.display = "none";
   const termed = bview === "termed";
   // only rows with a real badge number count as badges here - a terminated
   // employee who never had one is a person record, not a deactivated badge
@@ -905,22 +951,86 @@ function showPreview(payload){
 }
 
 function openNewBadge(prefillName, prefillEid){
+  // location list = every folder plus every row of the Badge Specifications
+  // table (so no-badge locations like MQY are selectable and answered)
+  const folderOpts = [...new Set([...DATA.folders, ...Object.keys(DATA.badgeSpecs)])]
+    .filter(f => f !== "(no labor dist)").sort();
+  const yn = (id, opts) => `<select id="${id}"><option value="" selected>&mdash;</option>
+    ${opts.map(o => `<option>${o}</option>`).join("")}</select>`;
   openModal("New Badge", `
     ${frow("Employee", `<input id="f-emp" list="emplist" placeholder="start typing a name&hellip;"
         autocomplete="off">
       <datalist id="emplist">${DATA.roster.map(r =>
         `<option value="${esc(r[1])} — ${esc(r[0])}">`).join("")}</datalist>`)}
     <div class="kv2" id="f-empinfo" style="display:none"></div>
-    ${frow("Badge location", `<select id="f-loc">${DATA.badgeLocs.map(l =>
-        `<option>${esc(l)}</option>`).join("")}</select>`)}
-    ${frow("Badge type", `<input id="f-type" list="typelist" placeholder="SIDA, AOA, Secured Area&hellip;">
+    ${frow("Location (Labor Distribution)", `<select id="f-loc">
+      <option value="" selected>&mdash; pick a location &mdash;</option>
+      ${folderOpts.map(l => `<option>${esc(l)}</option>`).join("")}</select>`)}
+    <div class="kv2" id="f-specnote" style="display:none"></div>
+    <div id="f-specwrap">
+    ${frow("Badge Type", `<input id="f-type" list="typelist" placeholder="set by the
+        location's specification&hellip;">
       <datalist id="typelist">${TYPES.map(t => `<option value="${esc(t)}">`).join("")}</datalist>`)}
-    ${frow("Badge number", `<input id="f-num" autocomplete="off">`)}
+    ${frow("Badge Number", `<input id="f-num" autocomplete="off">`)}
     ${frow("Expiration date", `<input id="f-exp" type="date">`)}
+    <div id="f-row-escort">${frow("Escort", yn("f-escort", ["Yes", "No"]))}</div>
+    <div id="f-row-cbp">${frow(`<span id="f-cbplabel">CBP Access</span>`,
+      yn("f-cbp", ["Yes", "No"]))}</div>
+    <div id="f-row-aoa">${frow("AOA Driving Privileges", yn("f-aoa", ["Yes", "No"]))}</div>
+    <div id="f-row-xq" style="display:none">${frow(`<span id="f-xq-label"></span>`,
+      yn("f-xq", ["Yes", "No"]))}</div>
+    </div>
     <div class="ferr" id="f-err"></div>
     <div class="btnrow"><button class="btn ghost" id="f-cancel">Cancel</button>
       <button class="btn primary" id="f-save">Create badge</button></div>`);
   const info = $("#f-empinfo");
+  const applySpec = () => {
+    const locv = $("#f-loc").value;
+    const spec = DATA.badgeSpecs[locv];
+    const note = $("#f-specnote"), wrap = $("#f-specwrap");
+    $("#f-cbplabel").textContent = "CBP Access";
+    if (spec && spec[0].toLowerCase() === "no"){
+      note.style.display = ""; wrap.style.display = "none"; $("#f-save").disabled = true;
+      note.innerHTML = `<b>No Badge Required</b> at ${esc(locv)} &mdash; there is nothing
+        to create for this location.`;
+      return;
+    }
+    wrap.style.display = ""; $("#f-save").disabled = false;
+    if (spec){
+      note.style.display = "";
+      note.innerHTML = `Standard specification for <b>${esc(locv)}</b> loaded &mdash;
+        answer each question Yes or No.`;
+      // one badge type per location - locked to the standard
+      $("#f-type").value = spec[1];
+      $("#f-type").readOnly = true;
+      $("#f-type").style.background = "var(--rowtint)";
+      // only this location's questions appear, always initially unanswered
+      $("#f-row-escort").style.display = spec[2] ? "" : "none";
+      $("#f-row-cbp").style.display = spec[3] ? "" : "none";
+      $("#f-row-aoa").style.display = spec[4] ? "" : "none";
+      $("#f-escort").value = ""; $("#f-cbp").value = ""; $("#f-aoa").value = "";
+      if (/leadership/i.test(spec[3]))
+        $("#f-cbplabel").textContent = "CBP (Leadership Only)";
+      // location-exclusive extra question (Ramp Access, Green Stripe...)
+      $("#f-row-xq").style.display = spec[5] ? "" : "none";
+      if (spec[5]) { $("#f-xq-label").textContent = spec[5]; $("#f-xq").value = ""; }
+    } else {
+      // no specification on file: everything manual and visible
+      $("#f-type").readOnly = false;
+      $("#f-type").style.background = "";
+      ["f-row-escort", "f-row-cbp", "f-row-aoa"].forEach(id =>
+        $("#" + id).style.display = "");
+      $("#f-row-xq").style.display = "none";
+      if (locv){
+        note.style.display = "";
+        note.innerHTML = `No specification on file for <b>${esc(locv)}</b> yet &mdash; fill
+          the fields manually. (Add a row to Badge Specifications.csv in Definitive
+          Lists to set its defaults.)`;
+      } else note.style.display = "none";
+    }
+  };
+  // specifications populate ONLY when a location is selected - picking an
+  // employee shows who they are but does not choose the location for you
   const syncInfo = () => {
     const r = EMP[$("#f-emp").value];
     info.style.display = r ? "" : "none";
@@ -928,6 +1038,7 @@ function openNewBadge(prefillName, prefillEid){
       &middot; home: ${esc(r[2]) || "&mdash;"}`;
   };
   $("#f-emp").addEventListener("input", syncInfo);
+  $("#f-loc").addEventListener("change", applySpec);
   if (prefillName && prefillEid){
     $("#f-emp").value = `${prefillName} — ${prefillEid}`;
     syncInfo();
@@ -936,12 +1047,32 @@ function openNewBadge(prefillName, prefillEid){
   $("#f-save").onclick = () => {
     const r = EMP[$("#f-emp").value], err = $("#f-err");
     if (!r) { err.textContent = "Pick an employee from the list."; return; }
-    if (!$("#f-num").value.trim()) { err.textContent = "Enter the badge number."; return; }
+    if (!$("#f-loc").value) { err.textContent = "Pick the location."; return; }
+    if (!$("#f-num").value.trim()) { err.textContent = "Enter the Badge Number."; return; }
     if (!$("#f-exp").value) { err.textContent = "Pick the expiration date."; return; }
-    showPreview({action: "create", employeeId: r[0], employeeName: r[1],
+    // only the questions shown for this location must be answered Yes or No
+    const asked = [["f-row-escort", "f-escort", "Escort"],
+      ["f-row-cbp", "f-cbp", $("#f-cbplabel").textContent],
+      ["f-row-aoa", "f-aoa", "AOA Driving Privileges"],
+      ["f-row-xq", "f-xq", $("#f-xq-label").textContent]]
+      .filter(([row]) => $("#" + row).style.display !== "none");
+    for (const [, id, lab] of asked){
+      if ($("#" + id).value !== "Yes" && $("#" + id).value !== "No"){
+        err.textContent = `Answer ${lab} — Yes or No.`;
+        return;
+      }
+    }
+    const payload = {action: "create", employeeId: r[0], employeeName: r[1],
       location: $("#f-loc").value, badgeType: $("#f-type").value.trim(),
       badgeNumber: $("#f-num").value.trim(), expiration: $("#f-exp").value,
-      requestedAt: new Date().toISOString()});
+      requestedAt: new Date().toISOString()};
+    for (const [, id, lab] of asked){
+      if (id === "f-escort") payload.escortPrivileges = $("#" + id).value;
+      else if (id === "f-cbp") payload.cbpAccess = $("#" + id).value;
+      else if (id === "f-aoa") payload.aoaDrivingPrivileges = $("#" + id).value;
+      else payload.additionalAccess = `${lab}: ${$("#" + id).value}`;
+    }
+    showPreview(payload);
   };
 }
 
@@ -1121,7 +1252,12 @@ setInterval(() => location.reload(), 30 * 60 * 1000);
 
 // Scale the 1180px layout to ~92% of the screen; phones stay 1:1
 function pageZoom(){ return Math.max(1, 0.92 * innerWidth / 1180); }
-function applyZoom(){ document.body.style.zoom = pageZoom(); }
+function applyZoom(){
+  document.body.style.zoom = pageZoom();
+  // zoom inflates vh-based sizes on fixed elements; --pz lets the modal
+  // compensate so its buttons never fall below the viewport
+  document.documentElement.style.setProperty("--pz", pageZoom());
+}
 applyZoom();
 window.addEventListener("resize", applyZoom);
 

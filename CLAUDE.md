@@ -67,6 +67,20 @@ two top tabs — Training | Badges — with Active/Terminated sub-views inside B
   terminated" and unknown return status (see badge-data/close_out_legacy.py on
   Clara's machine; backups kept). Alerts = terminated employee whose badge is not
   yet closed out.
+- **Badge Specifications by Location** (`Definitive Lists/Badge Specifications.csv`,
+  owner-editable): one row per location. Badge Required = No blocks the New Badge
+  form with a "No Badge Required" notice (no number, no questions). Badge Type is
+  the location's single standard - locked (read-only) on the form. Every non-blank
+  question column (Escort, CBP Access, AOA Driving Privileges, Extra Question) is
+  an OPEN Yes/No question at that location, never pre-answered; blank = the
+  question does not exist there. CBP value "Leadership only" relabels the field
+  "CBP (Leadership Only)". Extra Question holds location-exclusive questions
+  (BNA's Ramp Access, GoJet's Green Stripe). Specs populate only after a location
+  is selected. The location drill-down shows the question list in a strip and a
+  per-badge answer column for each of that location's questions (blank answers on
+  legacy records = never recorded by the old tracker). Badge Type values in
+  Badges.csv were bulk-standardized to these names (2026-08-28). Adding a
+  location = adding a row; then re-run the type standardization.
 - **Deactivation reasons** (required dropdown; recorded in the Badges.csv
   `Deactivation Reason` column, receiver in `Received By`): Employee terminated,
   Location closed, Lost or damaged, Employee transferred, Expired / replaced, Other.

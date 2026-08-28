@@ -43,6 +43,7 @@ SOURCES = {
     "roster": r"Definitive Lists\Roster.csv",
     "current": r"Definitive Lists\Current Employees.csv",
     "termedcsv": r"Definitive Lists\Terminated Employees.csv",
+    "specs": r"Definitive Lists\Badge Specifications.csv",
 }
 
 # Locations the pbix Management query filters out of Location Management.csv
@@ -357,12 +358,21 @@ def main():
         if (not num or num.upper() == "N/A") and status not in (
                 "Termed", "Deactivated") and es not in TERM_GROUP:
             status = "Not Badged"
+        def ynorm(v):
+            v = v.strip()
+            return ("Yes" if v[:1].upper() == "Y"
+                    else "No" if v[:1].upper() == "N" else v)
         badge_rows.append([
             bid, shown_eid, bname,
             position or r.get("Position", "").strip(),
             num, r.get("Badge Type", "").strip(),
             bexp, status, returned, bloc, labor, es,
             r.get("Deactivation Reason", "").strip(),
+            # per-badge specification answers (blank = never recorded)
+            ynorm(r.get("Escort", "")),
+            ynorm(r.get("CBP Access", "")),
+            ynorm(r.get("AOA Driving Privileges", "")),
+            r.get("Additional Access", "").strip(),
         ])
         # alert: terminated employee whose badge has not been closed out.
         # Cleared by the close-out flow (which requires the return for
@@ -415,6 +425,32 @@ def main():
     print(f"coverage: {sum(v[1] for v in cov_agg.values())} of "
           f"{sum(v[0] for v in cov_agg.values())} current employees hold a live "
           f"badge, across {len(coverage)} labor distributions")
+
+    # ---- Badge Specifications by Location: owner-editable control table
+    #      (Definitive Lists/Badge Specifications.csv). Drives the New Badge
+    #      form defaults; adding a location = adding a row, no code change.
+    badge_specs = {}
+    try:
+        for r in read_csv("specs"):
+            sloc = r.get("Location", "").strip()
+            if sloc:
+                # every non-blank field is an OPEN Yes/No question at that
+                # location (never pre-answered); blank = the question does not
+                # exist there. CBP value "Leadership only" changes its label to
+                # "CBP (Leadership Only)". Extra Question = location-exclusive
+                # (e.g. BNA's Ramp Access, GoJet's Green Stripe).
+                badge_specs[sloc] = [
+                    r.get("Badge Required", "").strip() or "Yes",
+                    r.get("Badge Type", "").strip(),
+                    r.get("Escort", "").strip(),
+                    r.get("CBP Access", "").strip(),
+                    r.get("AOA Driving Privileges", "").strip(),
+                    r.get("Extra Question", "").strip(),
+                ]
+    except FileNotFoundError:
+        print("badge specs: Badge Specifications.csv not found - form defaults off")
+    print(f"badge specs: {len(badge_specs)} locations configured "
+          f"({sum(1 for v in badge_specs.values() if v[0].lower() == 'no')} no-badge)")
 
     # ---- Active roster, minimal fields, for the New Badge employee picker
     roster_min = []
@@ -477,6 +513,8 @@ def main():
         "alerts": badge_alerts,
         "coverage": coverage,
         "employees": employees,
+        "folders": folders,
+        "badgeSpecs": badge_specs,
         "roster": roster_min,
         "badgeLocs": sorted(badge_locs),
         "badgeSoonDays": BADGE_SOON_DAYS,
