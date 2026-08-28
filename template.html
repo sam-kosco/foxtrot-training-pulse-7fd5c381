@@ -966,6 +966,9 @@ function openNewBadge(prefillName, prefillEid){
     ${frow("Location (Labor Distribution)", `<select id="f-loc">
       <option value="" selected>&mdash; pick a location &mdash;</option>
       ${folderOpts.map(l => `<option>${esc(l)}</option>`).join("")}</select>`)}
+    ${frow("Badge", `<select id="f-kind">
+      <option selected>Location standard badge</option>
+      <option>Customer Badge</option></select>`)}
     <div class="kv2" id="f-specnote" style="display:none"></div>
     <div id="f-specwrap">
     ${frow("Badge Type", `<input id="f-type" list="typelist" placeholder="set by the
@@ -988,14 +991,33 @@ function openNewBadge(prefillName, prefillEid){
     const locv = $("#f-loc").value;
     const spec = DATA.badgeSpecs[locv];
     const note = $("#f-specnote"), wrap = $("#f-specwrap");
+    const kindSel = $("#f-kind");
+    const customer = kindSel.value === "Customer Badge";
+    const noAirport = spec && spec[0].toLowerCase() === "no";
     $("#f-cbplabel").textContent = "CBP Access";
-    if (spec && spec[0].toLowerCase() === "no"){
+    // no-badge locations issue Customer Badges only
+    kindSel.options[0].disabled = !!noAirport;
+    if (noAirport && !customer){
       note.style.display = ""; wrap.style.display = "none"; $("#f-save").disabled = true;
-      note.innerHTML = `<b>No Badge Required</b> at ${esc(locv)} &mdash; there is nothing
-        to create for this location.`;
+      note.innerHTML = `<b>No Badge Required</b> at ${esc(locv)} for airport badges
+        &mdash; switch the Badge selector to <b>Customer Badge</b> if this person
+        needs one.`;
       return;
     }
     wrap.style.display = ""; $("#f-save").disabled = false;
+    // Customer Badge: available at EVERY location, no airport-access questions
+    if (customer){
+      $("#f-type").value = "Customer Badge";
+      $("#f-type").readOnly = true;
+      $("#f-type").style.background = "var(--rowtint)";
+      ["f-row-escort", "f-row-cbp", "f-row-aoa", "f-row-xq"].forEach(id =>
+        $("#" + id).style.display = "none");
+      note.style.display = "";
+      note.innerHTML = `<b>Customer Badge</b> &mdash; available at every location; the
+        airport-badge questions don't apply. The same person can also hold the
+        location's standard badge under a different badge number.`;
+      return;
+    }
     if (spec){
       note.style.display = "";
       note.innerHTML = `Standard specification for <b>${esc(locv)}</b> loaded &mdash;
@@ -1039,6 +1061,7 @@ function openNewBadge(prefillName, prefillEid){
   };
   $("#f-emp").addEventListener("input", syncInfo);
   $("#f-loc").addEventListener("change", applySpec);
+  $("#f-kind").addEventListener("change", applySpec);
   if (prefillName && prefillEid){
     $("#f-emp").value = `${prefillName} — ${prefillEid}`;
     syncInfo();

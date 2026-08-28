@@ -80,7 +80,12 @@ two top tabs — Training | Badges — with Active/Terminated sub-views inside B
   per-badge answer column for each of that location's questions (blank answers on
   legacy records = never recorded by the old tracker). Badge Type values in
   Badges.csv were bulk-standardized to these names (2026-08-28). Adding a
-  location = adding a row; then re-run the type standardization.
+  location = adding a row; then re-run the type standardization (always
+  EXCLUDING rows whose Badge Type is "Customer Badge").
+  **Customer Badge** is a second badge kind available at EVERY location,
+  including no-badge ones (there the form only allows Customer Badges); it
+  carries no airport-access questions, and the same person can hold both the
+  location's standard badge and a Customer Badge under different numbers.
 - **Deactivation reasons** (required dropdown; recorded in the Badges.csv
   `Deactivation Reason` column, receiver in `Received By`): Employee terminated,
   Location closed, Lost or damaged, Employee transferred, Expired / replaced, Other.
