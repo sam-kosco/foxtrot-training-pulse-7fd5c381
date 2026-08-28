@@ -109,13 +109,15 @@ def main():
     recent_ids = set()
     hire_by_id = {}          # norm id -> hire date (for the S101 due column)
     alias_by_eid = {}        # norm id -> {normalized "first last"} incl. preferred name
-    basic_emp = {}   # norm id -> (status, labor dist, position): badge join fallback
+    basic_emp = {}   # norm id -> (status, labor, position, name): badge join fallback
     for r in read_csv("empinfo"):
         nid = norm_eid(r["Employee Id"])
         if nid:
             basic_emp[nid] = (r.get("Employee Status Description", "").strip(),
                               r.get("Labor Dist Description", "").strip(),
-                              r.get("Position Description", "").strip())
+                              r.get("Position Description", "").strip(),
+                              f"{(r.get('Preferred First Name', '').strip() or r.get('First Name', '').strip())} "
+                              f"{r.get('Last Name', '').strip()}".strip())
         last = r.get("Last Name", "").strip()
         if last:
             # Both legal and preferred first names, so an LMS row filed under a
@@ -295,7 +297,9 @@ def main():
             continue
         term_emp[tid] = (r.get("Labor Dist Description", "").strip(),
                          (r.get("Position Description", "").strip()
-                          or r.get("Job Title", "").strip()))
+                          or r.get("Job Title", "").strip()),
+                         f"{(r.get('Preferred First Name', '').strip() or r.get('First Name', '').strip())} "
+                         f"{r.get('Last Name', '').strip()}".strip())
         tlast = r.get("Last Name", "").strip()
         for fn in (r.get("First Name", ""), r.get("Preferred First Name", "")):
             if fn.strip() and tlast:
@@ -333,20 +337,24 @@ def main():
         # position is standardized from the employee files for matched
         # employees (auto-updates on promotion); the badge tracker's
         # hand-typed value survives only for unmatched records
+        # matched employees display their official name from the employee
+        # files ("First Last", normal case) - the old tabs' spellings
+        # ("PENTS, ANTHONY") stay in Badges.csv as history, never on screen
+        cname = ""
         if nid and nid in cur_emp:
-            es, labor, position, _cname = cur_emp[nid]
+            es, labor, position, cname = cur_emp[nid]
         elif nid and nid in term_emp:
             es = "Terminated"
-            labor, position = term_emp[nid]
+            labor, position, cname = term_emp[nid]
         elif nid and nid in basic_emp:
             # fallback: Basic Employee Info covers employees the Current /
             # Terminated extracts miss (gap flagged to Sam 2026-08-27)
-            es, labor, position = basic_emp[nid]
+            es, labor, position, cname = basic_emp[nid]
         else:
             tmatch = term_names.get(norm_name(bname))
             if tmatch:
                 es = "Terminated"
-                labor, position = term_emp[tmatch]
+                labor, position, cname = term_emp[tmatch]
                 shown_eid = shown_eid or tmatch
             else:
                 es, labor, position = "Unmatched", "", ""
@@ -363,7 +371,7 @@ def main():
             return ("Yes" if v[:1].upper() == "Y"
                     else "No" if v[:1].upper() == "N" else v)
         badge_rows.append([
-            bid, shown_eid, bname,
+            bid, shown_eid, cname or bname,
             position or r.get("Position", "").strip(),
             num, r.get("Badge Type", "").strip(),
             bexp, status, returned, bloc, labor, es,
