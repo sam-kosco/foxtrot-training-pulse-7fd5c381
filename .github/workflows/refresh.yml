@@ -1,13 +1,11 @@
 name: Daily Training Pulse Refresh
 
 on:
-  schedule:
-    # Both fire; the guard step lets only the run where it is 9 PM in
-    # America/New_York proceed — 9 PM Eastern year-round across DST.
-    # Evening on purpose: it catches the same day's 6:26 AM LMS flow dump
-    # AND the ~11:35 AM Safety101 desktop automation output.
-    - cron: "0 1 * * *"
-    - cron: "0 2 * * *"
+  # No native cron (Sam, 2026-08-31 — GitHub's scheduler is fully retired
+  # org-wide): the platform's dispatcher fires this at 9:00 PM Eastern from
+  # Monitoring/schedules.json. Evening on purpose: it catches the same
+  # day's 6:26 AM LMS flow dump AND the evening Safety101 output. The old
+  # dual-cron ET guard below is vestigial (dispatch always proceeds).
   workflow_dispatch:
     # Always available for manual refresh from the Actions tab
 
