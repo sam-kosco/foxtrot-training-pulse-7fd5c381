@@ -367,7 +367,13 @@ def main():
         # files ("First Last", normal case) - the old tabs' spellings
         # ("PENTS, ANTHONY") stay in Badges.csv as history, never on screen
         cname = ""
-        if nid and nid in cur_emp:
+        if nid and nid in et_ids and nid in cur_emp:
+            # early-terminated: termed via the Termination Form but still
+            # Active in Paylocity - the badge side treats them as terminated
+            # (badges move to Deactivated; unreturned ones alert)
+            _st, labor, position, cname = cur_emp[nid]
+            es = "Terminated"
+        elif nid and nid in cur_emp:
             es, labor, position, cname = cur_emp[nid]
         elif nid and nid in term_emp:
             es = "Terminated"
@@ -425,6 +431,50 @@ def main():
     print(f"badges: {len(badge_rows)} rows across {len(badge_locs)} locations; "
           f"{n_termed} on the Terminated tab, {n_unmatched} unmatched IDs, "
           f"{len(badge_alerts)} unreturned-badge alerts")
+
+    # ---- Platform alerts feed: everything the platform's inbox needs to
+    #      notify the right people, published in training_data.json. Kinds:
+    #      expiring (within ALERT_SOON_DAYS), expired (every currently-
+    #      expired badge - a standing compliance state, deduped by the
+    #      platform's alert tags), unreturned (terminated employee whose
+    #      badge is not closed out). The page shows Expiring at
+    #      BADGE_SOON_DAYS for visibility; alerts fire at ALERT_SOON_DAYS
+    #      ("see it coming at 30, get alerted at 7" - Clara, 2026-09-02).
+    ALERT_SOON_DAYS = 7
+    PAGES_URL = ("https://foxtrot-aviation-services.github.io/"
+                 "foxtrot-training-pulse-7fd5c381/")
+    alerts_feed = []
+    for b in badge_rows:
+        if (not b[4] or b[8] == "Yes" or b[11] in TERM_GROUP
+                or b[7] in ("Termed", "Deactivated", "Not Badged")):
+            continue
+        try:
+            bdd = datetime.strptime(b[6], "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        days = (bdd - today).days
+        kind = ("expired" if days < 0
+                else "expiring" if days <= ALERT_SOON_DAYS else None)
+        if not kind:
+            continue
+        alerts_feed.append({
+            "kind": kind, "badgeId": b[0], "employee": b[2],
+            "employeeId": b[1], "badgeNumber": b[4], "badgeType": b[5],
+            "location": b[9], "laborDist": b[10], "expiration": b[6],
+            "daysLeft": days, "contacts": loc_mgrs.get(b[9], []),
+            "link": f"{PAGES_URL}#renew/{b[0]}",
+        })
+    for a in badge_alerts:
+        alerts_feed.append({
+            "kind": "unreturned", "badgeId": a[0], "employee": a[1],
+            "badgeNumber": a[2], "location": a[3], "laborDist": a[4],
+            "contacts": a[5].split("; ") if a[5] else [], "empStatus": a[6],
+            "link": f"{PAGES_URL}#badge/{a[0]}",
+        })
+    kc = {}
+    for a in alerts_feed:
+        kc[a["kind"]] = kc.get(a["kind"], 0) + 1
+    print(f"alerts feed: {kc or 'empty'}")
 
     # ---- Coverage: employed vs badged, grouped by labor distribution.
     #      "Badged" = holds at least one live badge with a real number
@@ -545,6 +595,8 @@ def main():
         "people": people,
         "badges": badge_rows,
         "alerts": badge_alerts,
+        "alertsFeed": alerts_feed,
+        "alertSoonDays": ALERT_SOON_DAYS,
         "coverage": coverage,
         "employees": employees,
         "folders": folders,
