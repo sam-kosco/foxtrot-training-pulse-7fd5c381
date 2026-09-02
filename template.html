@@ -615,8 +615,9 @@ function renderDrill(){
   if (dspec){
     sp.style.display = "";
     sp.innerHTML = dspec[0].toLowerCase() === "no"
-      ? `<b>No Badge Required</b> at ${esc(covLD)}.`
-      : `<b>Badge Type:</b> ${esc(dspec[1]) || "&mdash;"}`
+      ? `<b>No Badge Required</b> at ${esc(covLD)} for airport badges &middot;
+         <b>Badge Type:</b> Customer Badge (available)`
+      : `<b>Badge Type:</b> ${esc(dspec[1]) || "&mdash;"} or Customer Badge`
         + (dspec[2] ? ` &middot; <b>Escort:</b> Yes / No` : "")
         + (dspec[3] ? ` &middot; <b>${/leadership/i.test(dspec[3])
             ? "CBP (Leadership Only)" : "CBP Access"}:</b> Yes / No` : "")
