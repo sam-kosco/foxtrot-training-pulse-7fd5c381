@@ -1,7 +1,11 @@
-"""Send badge alert emails from the alertsFeed the nightly build publishes.
+"""MANUAL FALLBACK ONLY - badge alert email delivery is owned by the
+platform's daily digest (Sam, 2026-09-02): one email per recipient per day
+compiling every platform alert, consuming alertsFeed from
+training_data.json. This script is deliberately NOT wired into refresh.yml;
+it exists as a formatting reference and a break-glass sender if the digest
+is ever down (run manually with the Graph env vars + RECIPIENTS_OVERRIDE).
 
-Runs in CI right after build_training.py (see refresh.yml). Reads
-training_data.json -> alertsFeed and sends via Microsoft Graph as
+Reads training_data.json -> alertsFeed and sends via Microsoft Graph as
 foxtrot.automation@ (house pattern - no SMTP, failures fail the run).
 
 Anti-fatigue design (Clara, 2026-09-02):

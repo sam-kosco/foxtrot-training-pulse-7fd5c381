@@ -94,23 +94,18 @@ jobs:
           TZ: America/New_York
         run: python build_training.py
 
-      - name: Send badge alert emails
-        if: steps.guard.outputs.run == 'true'
-        env:
-          TENANT_ID:     ${{ secrets.TENANT_ID }}
-          CLIENT_ID:     ${{ secrets.CLIENT_ID }}
-          CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
-          # TEST MODE (Clara, 2026-09-02): every badge alert routes here until
-          # the per-location distribution lists exist. The would-be recipients
-          # are named inside each email. Swap this for the distro map later.
-          RECIPIENTS_OVERRIDE: clara.lana@foxtrotaviation.com
-        run: python badge_alert_emails.py
+      # Badge alert DELIVERY is owned by the platform's daily digest (Sam,
+      # 2026-09-02): one email per recipient per day compiling every platform
+      # alert, so inboxes don't flood. This build still COMPUTES the alerts -
+      # they're published in training_data.json as alertsFeed (employee,
+      # badge, contacts, deep link per alert). badge_alert_emails.py remains
+      # as a manual fallback only and is deliberately not wired here.
 
       - name: Commit and push
         if: steps.guard.outputs.run == 'true'
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add index.html training_data.json badge_alerts_state.json
+          git add index.html training_data.json
           git diff --cached --quiet || git commit -m "chore: refresh training pulse [$(date -u '+%Y-%m-%d %H:%M UTC')]"
           git push

@@ -63,6 +63,12 @@ two top tabs — Training | Badges — with Active/Terminated sub-views inside B
   Deactivated — badge-keyed: any Deactivated/Termed/returned badge plus every badge
   of a terminated employee; its pill shows the deactivation REASON.
   Statuses (Active / Expiring 30d / Expired) recompute at each build.
+- **Alerts:** computed at every build and published in `training_data.json` as
+  `alertsFeed` (kinds: expiring &le;7 days / expired standing / unreturned; each
+  entry carries employee, badge, location, labor dist, contact managers, and a
+  deep link). DELIVERY is the platform's daily digest (Sam): one email per
+  recipient per day compiling all platform alerts. `badge_alert_emails.py` is a
+  manual fallback only, not wired into CI.
 - **Rules:** a row without a badge number is not a badge (renders Not Badged);
   legacy pre-process records were bulk-closed 2026-08-27 with reason "Employee
   terminated" and unknown return status (see badge-data/close_out_legacy.py on
