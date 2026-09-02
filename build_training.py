@@ -413,6 +413,7 @@ def main():
             ynorm(r.get("CBP Access", "")),
             ynorm(r.get("AOA Driving Privileges", "")),
             r.get("Additional Access", "").strip(),
+            r.get("Received By", "").strip(),   # [17] returned-badge tooltip
         ])
         # alert: terminated employee whose badge has not been closed out.
         # Cleared by the close-out flow (which requires the return for
@@ -420,7 +421,7 @@ def main():
         # process start (2026-08-27) with prior return status unknown.
         if (es in TERM_GROUP and returned != "Yes"
                 and num and num.upper() != "N/A"
-                and status not in ("Deactivated", "Not Badged")):
+                and status not in ("Deactivated", "Termed", "Not Badged")):
             badge_alerts.append([bid, bname, num, bloc, labor,
                                  "; ".join(loc_mgrs.get(labor, [])), es])
     border = {"Expired": 0, "Expiring": 1, "Unknown": 2, "Active": 3,

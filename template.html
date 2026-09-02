@@ -89,6 +89,7 @@ select:focus-visible{outline:2px solid var(--orange);outline-offset:1px}
 .stab .pill{margin-left:6px}
 .covrow{cursor:pointer}
 .covrow:hover .cell{background:#fdf1e0!important}
+.ddi:hover{background:#fdf1e0}
 .pill{display:inline-block;font-size:11.5px;font-weight:700;border-radius:999px;padding:2px 10px}
 .pill.active{background:#e3f4ea;color:#136f42}
 .pill.expiring{background:#fdf1dc;color:#8a5a0a}
@@ -865,10 +866,10 @@ function renderBadges(){
   const shown = rows.slice(0, ROWCAP);
   const head = `<div class="grow hrow">${cols.map(c => `<div class="cell">${c}</div>`).join("")}</div>`;
   const body = shown.map((b,i) => {
-    // in the Deactivated view any unreturned badge can still be closed out
-    // (record the return); on the main list, live badges get both actions
+    // Close out appears ONLY for unreturned badges that were never closed:
+    // Deactivated / Termed / Returned rows are finished business
     const acts = termed
-      ? ((b[8] !== "Yes" && b[7] !== "Not Badged")
+      ? ((b[8] !== "Yes" && !["Deactivated", "Termed", "Not Badged"].includes(b[7]))
         ? `<span class="rowact"><button class="danger" data-act="deact"
           data-bid="${esc(b[0])}">Close out</button></span>` : "&mdash;")
       : ((b[7] === "Termed" || b[7] === "Not Badged" || b[7] === "Deactivated") ? "&mdash;"
@@ -886,7 +887,10 @@ function renderBadges(){
         ? [`<div class="cell">${b[12]
             ? `<span class="pill ${RPILL[b[12]] || "unknown"}" title="${esc(b[12])}">${esc(b[12])}</span>`
             : "&mdash;"}</div>`,
-           `<div class="cell">${esc(b[8]) || "&mdash;"}</div>`]
+           `<div class="cell">${b[8] === "Yes" && b[17]
+             ? `<span title="Received by ${esc(b[17])}" style="cursor:help;
+                border-bottom:1px dotted var(--muted)">Yes</span>`
+             : esc(b[8]) || "&mdash;"}</div>`]
         : [`<div class="cell">${bfmt(b[6])}</div>`,
            `<div class="cell"><span class="pill ${PILLC[b[7]] || "unknown"}">${esc(b[7])}</span></div>`]),
       ...(showLoc ? [`<div class="cell">${esc(b[9]) || "&mdash;"}</div>`] : []),
@@ -962,8 +966,27 @@ function openModal(title, bodyHTML){
   modal.style.display = "flex";
   modal.querySelector(".mx").onclick = closeModal;
 }
-modal.addEventListener("click", e => { if (e.target === modal) closeModal(); });
-document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+// forms close ONLY via the X or Cancel buttons - backdrop clicks and Escape
+// were closing half-filled forms by accident (Clara & Sam, 2026-09-02)
+
+// dates are typed as MM/DD/YYYY (auto-slashed) instead of a click-heavy picker
+const parseMDY = s => {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec((s || "").trim());
+  if (!m) return null;
+  const d = new Date(+m[3], +m[1] - 1, +m[2]);
+  return (d.getFullYear() === +m[3] && d.getMonth() === +m[1] - 1
+          && d.getDate() === +m[2])
+    ? `${m[3]}-${String(+m[1]).padStart(2, "0")}-${String(+m[2]).padStart(2, "0")}`
+    : null;
+};
+const wireDate = id => {
+  const el = $("#" + id);
+  el.addEventListener("input", () => {
+    const d = el.value.replace(/\D/g, "").slice(0, 8);
+    el.value = d.length > 4 ? `${d.slice(0,2)}/${d.slice(2,4)}/${d.slice(4)}`
+             : d.length > 2 ? `${d.slice(0,2)}/${d.slice(2)}` : d;
+  });
+};
 
 const frow = (lab, inner) =>
   `<div class="frow">${lab ? `<label>${lab}</label>` : ""}${inner}</div>`;
@@ -971,8 +994,9 @@ const frow = (lab, inner) =>
 function showPreview(payload){
   modal.querySelector(".mbody").innerHTML = `
     <div class="kv2" style="background:#e3f4ea;border-color:#bfe3cd"><b>Preview mode.</b>
-      This is exactly what will be saved once the Power Automate relay is
-      connected &mdash; nothing has been changed yet.</div>
+      This is exactly what will be saved once badge actions are wired into the
+      platform's backend (Hiring Hub-style, no Power Automate) &mdash; nothing
+      has been changed yet.</div>
     <div class="previewbox">${esc(JSON.stringify(payload, null, 2))}</div>
     <div class="btnrow"><button class="btn ghost" id="f-close">Close</button></div>`;
   $("#f-close").onclick = closeModal;
@@ -986,10 +1010,13 @@ function openNewBadge(prefillName, prefillEid){
   const yn = (id, opts) => `<select id="${id}"><option value="" selected>&mdash;</option>
     ${opts.map(o => `<option>${o}</option>`).join("")}</select>`;
   openModal("New Badge", `
-    ${frow("Employee", `<input id="f-emp" list="emplist" placeholder="start typing a name&hellip;"
+    ${frow("Employee", `<div style="position:relative">
+      <input id="f-emp" placeholder="start typing a first or last name&hellip;"
         autocomplete="off">
-      <datalist id="emplist">${DATA.roster.map(r =>
-        `<option value="${esc(r[1])} — ${esc(r[0])}">`).join("")}</datalist>`)}
+      <div id="f-empdd" style="position:absolute;left:0;right:0;top:100%;z-index:70;
+        background:var(--surface);border:1px solid var(--line);
+        border-radius:0 0 8px 8px;max-height:190px;overflow:auto;display:none;
+        box-shadow:0 8px 20px #0003"></div></div>`)}
     <div class="kv2" id="f-empinfo" style="display:none"></div>
     ${frow("Location (Labor Distribution)", `<select id="f-loc">
       <option value="" selected>&mdash; pick a location &mdash;</option>
@@ -1003,7 +1030,8 @@ function openNewBadge(prefillName, prefillEid){
         location's specification&hellip;">
       <datalist id="typelist">${TYPES.map(t => `<option value="${esc(t)}">`).join("")}</datalist>`)}
     ${frow("Badge Number", `<input id="f-num" autocomplete="off">`)}
-    ${frow("Expiration date", `<input id="f-exp" type="date">`)}
+    ${frow("Expiration date (MM/DD/YYYY)", `<input id="f-exp" placeholder="MM/DD/YYYY"
+      inputmode="numeric" maxlength="10" autocomplete="off">`)}
     <div id="f-row-escort">${frow("Escort", yn("f-escort", ["Yes", "No"]))}</div>
     <div id="f-row-cbp">${frow(`<span id="f-cbplabel">CBP Access</span>`,
       yn("f-cbp", ["Yes", "No"]))}</div>
@@ -1087,9 +1115,37 @@ function openNewBadge(prefillName, prefillEid){
     if (r) info.innerHTML = `Emp ID: <b>${esc(r[0])}</b> &middot; ${esc(r[3]) || "&mdash;"}
       &middot; home: ${esc(r[2]) || "&mdash;"}`;
   };
-  $("#f-emp").addEventListener("input", syncInfo);
+  // prefix search: every typed word must start a name word ("S" finds Sam
+  // Smith and Ana Silva, never Jessica - no mid-name letter matches)
+  const dd = $("#f-empdd");
+  const suggest = () => {
+    const q = $("#f-emp").value.trim().toLowerCase();
+    syncInfo();
+    if (!q || EMP[$("#f-emp").value]){ dd.style.display = "none"; return; }
+    const toks = q.split(/\s+/);
+    const hits = DATA.roster.filter(r => {
+      const names = r[1].toLowerCase().split(/\s+/);
+      return toks.every(t => names.some(n => n.startsWith(t)));
+    }).slice(0, 12);
+    dd.innerHTML = hits.length
+      ? hits.map(r => `<div class="ddi" data-v="${esc(r[1])} — ${esc(r[0])}"
+          style="padding:7px 10px;cursor:pointer;font-size:13.5px"><b>${esc(r[1])}</b>
+          <span style="color:var(--muted)">&mdash; ${esc(r[0])} &middot; ${esc(r[2])}</span></div>`).join("")
+      : `<div style="padding:7px 10px;color:var(--muted);font-size:13px">no matching employee</div>`;
+    dd.style.display = "";
+  };
+  $("#f-emp").addEventListener("input", suggest);
+  dd.addEventListener("mousedown", e => {
+    const it = e.target.closest(".ddi");
+    if (!it) return;
+    $("#f-emp").value = it.dataset.v;
+    dd.style.display = "none";
+    syncInfo();
+  });
+  $("#f-emp").addEventListener("blur", () => setTimeout(() => dd.style.display = "none", 150));
   $("#f-loc").addEventListener("change", applySpec);
   $("#f-kind").addEventListener("change", applySpec);
+  wireDate("f-exp");
   if (prefillName && prefillEid){
     $("#f-emp").value = `${prefillName} — ${prefillEid}`;
     syncInfo();
@@ -1100,7 +1156,8 @@ function openNewBadge(prefillName, prefillEid){
     if (!r) { err.textContent = "Pick an employee from the list."; return; }
     if (!$("#f-loc").value) { err.textContent = "Pick the location."; return; }
     if (!$("#f-num").value.trim()) { err.textContent = "Enter the Badge Number."; return; }
-    if (!$("#f-exp").value) { err.textContent = "Pick the expiration date."; return; }
+    const expIso = parseMDY($("#f-exp").value);
+    if (!expIso) { err.textContent = "Enter the expiration date as MM/DD/YYYY."; return; }
     // only the questions shown for this location must be answered Yes or No
     const asked = [["f-row-escort", "f-escort", "Escort"],
       ["f-row-cbp", "f-cbp", $("#f-cbplabel").textContent],
@@ -1115,7 +1172,7 @@ function openNewBadge(prefillName, prefillEid){
     }
     const payload = {action: "create", employeeId: r[0], employeeName: r[1],
       location: $("#f-loc").value, badgeType: $("#f-type").value.trim(),
-      badgeNumber: $("#f-num").value.trim(), expiration: $("#f-exp").value,
+      badgeNumber: $("#f-num").value.trim(), expiration: expIso,
       requestedAt: new Date().toISOString()};
     for (const [, id, lab] of asked){
       if (id === "f-escort") payload.escortPrivileges = $("#" + id).value;
@@ -1134,15 +1191,18 @@ function openRenew(bid){
       ${esc(b[5]) || "Badge"} <b>${esc(b[4]) || "&mdash;"}</b> &middot; ${esc(b[9]) || "&mdash;"}<br>
       Current expiration: <b>${bfmt(b[6])}</b> &middot;
       <span class="pill ${PILLC[b[7]] || "unknown"}">${esc(b[7])}</span></div>
-    ${frow("New expiration date", `<input id="f-exp" type="date">`)}
+    ${frow("New expiration date (MM/DD/YYYY)", `<input id="f-exp" placeholder="MM/DD/YYYY"
+      inputmode="numeric" maxlength="10" autocomplete="off">`)}
     <div class="ferr" id="f-err"></div>
     <div class="btnrow"><button class="btn ghost" id="f-cancel">Cancel</button>
       <button class="btn primary" id="f-save">Save renewal</button></div>`);
+  wireDate("f-exp");
   $("#f-cancel").onclick = closeModal;
   $("#f-save").onclick = () => {
-    if (!$("#f-exp").value) { $("#f-err").textContent = "Pick the new expiration date."; return; }
+    const expIso = parseMDY($("#f-exp").value);
+    if (!expIso) { $("#f-err").textContent = "Enter the new expiration date as MM/DD/YYYY."; return; }
     showPreview({action: "renew", badgeId: b[0], employeeId: b[1], employeeName: b[2],
-      badgeNumber: b[4], location: b[9], newExpiration: $("#f-exp").value,
+      badgeNumber: b[4], location: b[9], newExpiration: expIso,
       requestedAt: new Date().toISOString()});
   };
 }
