@@ -853,16 +853,20 @@ function renderBadges(){
   const showLoc = bloc === ALL;
   const ldCell = b => b[10] ? esc(b[10])
     : (b[11] === "Unmatched" ? `<span class="pill unknown">unmatched</span>` : "&mdash;");
+  // Actions only exists while something still needs closing out - otherwise
+  // the Deactivated date column takes its place (Clara, 2026-09-02)
+  const needAct = !termed || rows.some(b =>
+    b[8] !== "Yes" && !["Deactivated", "Termed", "Not Badged"].includes(b[7]));
   const cols = (termed
-    ? ["Emp ID","Employee","Emp status","Labor Dist","Badge #","Type","Reason","Returned"]
+    ? ["Emp ID","Employee","Emp status","Labor Dist","Badge #","Type","Reason","Returned","Deactivated"]
     : ["Emp ID","Employee","Position","Labor Dist","Badge #","Type","Expires","Status"])
-    .concat(showLoc ? ["Location"] : []).concat(["Actions"]);
+    .concat(showLoc ? ["Location"] : []).concat(needAct ? ["Actions"] : []);
   const widths = (termed
     ? "80px minmax(140px,1.4fr) 96px minmax(92px,.9fr) minmax(100px,1fr) minmax(88px,.9fr) " +
-      "minmax(130px,1.2fr) 78px"
+      "minmax(130px,1.2fr) 78px 86px"
     : "80px minmax(140px,1.4fr) minmax(95px,1fr) minmax(95px,1fr) minmax(108px,1.1fr) " +
       "minmax(92px,.9fr) 82px 106px")
-    + (showLoc ? " 90px" : "") + " 150px";
+    + (showLoc ? " 90px" : "") + (needAct ? " 150px" : "");
   const shown = rows.slice(0, ROWCAP);
   const head = `<div class="grow hrow">${cols.map(c => `<div class="cell">${c}</div>`).join("")}</div>`;
   const body = shown.map((b,i) => {
@@ -890,11 +894,12 @@ function renderBadges(){
            `<div class="cell">${b[8] === "Yes" && b[17]
              ? `<span title="Received by ${esc(b[17])}" style="cursor:help;
                 border-bottom:1px dotted var(--muted)">Yes</span>`
-             : esc(b[8]) || "&mdash;"}</div>`]
+             : esc(b[8]) || "&mdash;"}</div>`,
+           `<div class="cell">${bfmt(b[18])}</div>`]
         : [`<div class="cell">${bfmt(b[6])}</div>`,
            `<div class="cell"><span class="pill ${PILLC[b[7]] || "unknown"}">${esc(b[7])}</span></div>`]),
       ...(showLoc ? [`<div class="cell">${esc(b[9]) || "&mdash;"}</div>`] : []),
-      `<div class="cell">${acts}</div>`];
+      ...(needAct ? [`<div class="cell">${acts}</div>`] : [])];
     return `<div class="grow ${i%2?"oddrow":""}${DEEP && b[0]===DEEP ? " hlrow" : ""}"
       id="bdg-${esc(b[0])}">${cells.join("")}</div>`; }).join("");
   $("#bbody").innerHTML = rows.length
@@ -1273,9 +1278,13 @@ function openDeactivate(bid){
       err.textContent = "Add a note explaining the deactivation.";
       return;
     }
+    const now = new Date();
+    const deactivatedDate = `${now.getFullYear()}-${String(now.getMonth() + 1)
+      .padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     showPreview({action: "deactivate", badgeId: b[0], employeeId: b[1], employeeName: b[2],
       badgeNumber: b[4], location: b[9], reason, returned,
-      receivedBy: recv, note, requestedAt: new Date().toISOString()});
+      receivedBy: recv, note, deactivatedDate,
+      requestedAt: now.toISOString()});
   };
 }
 

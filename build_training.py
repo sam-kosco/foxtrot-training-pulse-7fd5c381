@@ -414,6 +414,7 @@ def main():
             ynorm(r.get("AOA Driving Privileges", "")),
             r.get("Additional Access", "").strip(),
             r.get("Received By", "").strip(),   # [17] returned-badge tooltip
+            r.get("Deactivated Date", "").strip(),   # [18] Deactivated column
         ])
         # alert: terminated employee whose badge has not been closed out.
         # Cleared by the close-out flow (which requires the return for
