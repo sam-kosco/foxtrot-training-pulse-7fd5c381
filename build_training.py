@@ -44,6 +44,12 @@ SOURCES = {
     "current": r"Definitive Lists\Current Employees.csv",
     "termedcsv": r"Definitive Lists\Terminated Employees.csv",
     "specs": r"Definitive Lists\Badge Specifications.csv",
+    # Early terminations (core repo's roster job): people termed via the
+    # Termination Form whom Paylocity still shows Active until the pay
+    # cycle closes — excluded from every count so leavers stop dinging
+    # compliance (Sam, 2026-08-27). The badge join treats them as
+    # terminated too (their badges move to Deactivated and can alert).
+    "earlyterm": r"Definitive Lists\Early Terminations.csv",
 }
 
 # Locations the pbix Management query filters out of Location Management.csv
@@ -61,9 +67,14 @@ def src_path(key):
     return DATA_HUB / SOURCES[key]
 
 
-def read_csv(key):
-    with open(src_path(key), newline="", encoding="utf-8-sig") as f:
-        return list(csv.DictReader(f))
+def read_csv(key, missing_ok=False):
+    try:
+        with open(src_path(key), newline="", encoding="utf-8-sig") as f:
+            return list(csv.DictReader(f))
+    except FileNotFoundError:
+        if missing_ok:
+            return []
+        raise
 
 
 def norm_name(s):
@@ -140,6 +151,17 @@ def main():
     print(f"hire dates: {len(hire_by_id)} employees; {len(recent_ids)} hired within "
           f"{NEW_HIRE_GRACE_DAYS} days (S101 gaps count Incomplete, not Overdue)")
 
+    # ---- Early terminations: exclude leavers Paylocity still shows Active.
+    #      S101/expiring rows carry ids; the LMS transcript only has names,
+    #      so those are matched by normalized name (the list is ~a couple
+    #      dozen people — a same-name collision with an active employee is
+    #      possible but far rarer than the daily leaver noise this removes).
+    et_rows = read_csv("earlyterm", missing_ok=True)
+    et_ids = {norm_eid(r["Employee Id"]) for r in et_rows}
+    et_names = {norm_name(f"{r.get('First Name', '')} {r.get('Last Name', '')}")
+                for r in et_rows}
+    print(f"early terminations excluded: {len(et_rows)} people")
+
     # ---- Location aggregates (shared LMS + S101 counters)
     loc_agg = {}
 
@@ -160,6 +182,8 @@ def main():
         due = r.get("Due Date", "").strip()
         if not emp or status not in LMS_STATE or loc in DASH_EXCLUDE:
             continue
+        if norm_name(emp) in et_names:
+            continue          # early-termed (form ahead of Paylocity)
         state = LMS_STATE[status]
         a = agg(loc)
         a[{"c": "lmsC", "o": "lmsO", "i": "lmsI"}[state]] += 1
@@ -178,7 +202,7 @@ def main():
     s101_people = {}         # emp id -> {locs, c, o, i}
     for r in read_csv("s101"):
         eid, loc = r["Emp ID"].strip(), r["Location"].strip()
-        if loc in DASH_EXCLUDE:
+        if loc in DASH_EXCLUDE or norm_eid(eid) in et_ids:
             continue
         try:
             comp = float(r["Comp?"])
@@ -211,6 +235,8 @@ def main():
         if not ("Never" in exp or "Expired" in exp):
             continue          # future "Expires on ..." rows are compliant
         eid = norm_eid(r["Employee ID"])
+        if eid in et_ids:
+            continue          # early-termed (form ahead of Paylocity)
         if eid in recent_ids:
             continue          # still in the new-hire grace window — Incomplete
         hired = hire_by_id.get(eid)
