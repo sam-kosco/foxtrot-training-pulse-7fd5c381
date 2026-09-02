@@ -712,8 +712,10 @@ function renderDrill(){
   const specCols = [];
   if (dspec && dspec[0].toLowerCase() !== "no"){
     if (dspec[2]) specCols.push(["Escort", 13, "Escort"]);
-    if (dspec[3]) specCols.push([/leadership/i.test(dspec[3])
-      ? "CBP (Leadership Only)" : "CBP Access", 14, "CBP"]);
+    if (dspec[3]) specCols.push(/customs/i.test(dspec[3])
+      ? ["Customs", 14, "Customs", "cust"]
+      : [/leadership/i.test(dspec[3])
+        ? "CBP (Leadership Only)" : "CBP Access", 14, "CBP"]);
     if (dspec[4]) specCols.push(["AOA Driving Privileges", 15, "AOA Drv"]);
     if (dspec[5]) specCols.push(["Tool Access", 19, "Tools"]);
     if (dspec[6]) specCols.push([dspec[6], 16,
@@ -748,13 +750,15 @@ function renderDrill(){
       ? `<span style="font-size:12px;color:var(--muted)" title="holds a live badge
           filed at another location">&#9992;&#65039; badged at ${esc(r.away.join(", "))}</span>`
       : `<span class="pill ${PILLC[stat(r)] || "unknown"}">${esc(stat(r))}</span>`;
-    const specCells = specCols.map(([full, idx]) => {
+    const specCells = specCols.map(([full, idx, , mode]) => {
       if (!b) return `<div class="cell">&mdash;</div>`;
       let v = b[idx] || "";
       if (idx === 16){                       // extra answers store "Label: Yes"
         const m = /(Yes|No)\s*$/i.exec(v);
         v = m ? m[1] : v;
       }
+      // Customs column: a Yes shows the seal number itself
+      if (mode === "cust" && v === "Yes") v = b[20] || "Yes";
       return `<div class="cell" title="${esc(full)}">${esc(v) || "&mdash;"}</div>`;
     }).join("");
     return `<div class="grow ${i%2?"oddrow":""}${hl}"${b ? ` id="bdg-${esc(b[0])}"` : ""}>
@@ -1044,6 +1048,8 @@ function openNewBadge(prefillName, prefillEid){
     <div id="f-row-escort">${frow("Escort", yn("f-escort", ["Yes", "No"]))}</div>
     <div id="f-row-cbp">${frow(`<span id="f-cbplabel">CBP Access</span>`,
       yn("f-cbp", ["Yes", "No"]))}</div>
+    <div id="f-row-custnum" style="display:none">${frow("Customs number",
+      `<input id="f-custnum" autocomplete="off" placeholder="customs seal number">`)}</div>
     <div id="f-row-aoa">${frow("AOA Driving Privileges", yn("f-aoa", ["Yes", "No"]))}</div>
     <div id="f-row-tool">${frow("Tool Access", yn("f-tool", ["Yes", "No"]))}</div>
     <div id="f-row-xq" style="display:none">${frow(`<span id="f-xq-label"></span>`,
@@ -1053,6 +1059,7 @@ function openNewBadge(prefillName, prefillEid){
     <div class="btnrow"><button class="btn ghost" id="f-cancel">Cancel</button>
       <button class="btn primary" id="f-save">Create badge</button></div>`);
   const info = $("#f-empinfo");
+  let custMode = false;
   const applySpec = () => {
     const locv = $("#f-loc").value;
     const spec = DATA.badgeSpecs[locv];
@@ -1103,6 +1110,12 @@ function openNewBadge(prefillName, prefillEid){
       ["f-escort", "f-cbp", "f-aoa", "f-tool"].forEach(id => $("#" + id).value = "");
       if (/leadership/i.test(spec[3]))
         $("#f-cbplabel").textContent = "CBP (Leadership Only)";
+      // Customs mode (CVG): the question is labeled Customs, and a Yes
+      // requires the customs seal number
+      custMode = /customs/i.test(spec[3]);
+      if (custMode) $("#f-cbplabel").textContent = "Customs";
+      $("#f-custnum").value = "";
+      $("#f-row-custnum").style.display = "none";
       // location-exclusive extra question (Ramp Access, Green Stripe...)
       $("#f-row-xq").style.display = spec[6] ? "" : "none";
       if (spec[6]) { $("#f-xq-label").textContent = spec[6]; $("#f-xq").value = ""; }
@@ -1159,6 +1172,10 @@ function openNewBadge(prefillName, prefillEid){
   $("#f-emp").addEventListener("blur", () => setTimeout(() => dd.style.display = "none", 150));
   $("#f-loc").addEventListener("change", applySpec);
   $("#f-kind").addEventListener("change", applySpec);
+  $("#f-cbp").addEventListener("change", () => {
+    $("#f-row-custnum").style.display =
+      (custMode && $("#f-cbp").value === "Yes") ? "" : "none";
+  });
   wireDate("f-exp");
   if (prefillName && prefillEid){
     $("#f-emp").value = `${prefillName} — ${prefillEid}`;
@@ -1189,6 +1206,10 @@ function openNewBadge(prefillName, prefillEid){
       location: $("#f-loc").value, badgeType: $("#f-type").value.trim(),
       badgeNumber: $("#f-num").value.trim(), expiration: expIso,
       requestedAt: new Date().toISOString()};
+    if (custMode && $("#f-cbp").value === "Yes" && !$("#f-custnum").value.trim()){
+      err.textContent = "Enter the customs seal number.";
+      return;
+    }
     for (const [, id, lab] of asked){
       if (id === "f-escort") payload.escortPrivileges = $("#" + id).value;
       else if (id === "f-cbp") payload.cbpAccess = $("#" + id).value;
@@ -1196,6 +1217,8 @@ function openNewBadge(prefillName, prefillEid){
       else if (id === "f-tool") payload.toolAccess = $("#" + id).value;
       else payload.additionalAccess = `${lab}: ${$("#" + id).value}`;
     }
+    if (custMode && $("#f-cbp").value === "Yes")
+      payload.customsNumber = $("#f-custnum").value.trim();
     showPreview(payload);
   };
 }
