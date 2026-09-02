@@ -415,6 +415,7 @@ def main():
             r.get("Additional Access", "").strip(),
             r.get("Received By", "").strip(),   # [17] returned-badge tooltip
             r.get("Deactivated Date", "").strip(),   # [18] Deactivated column
+            ynorm(r.get("Tool Access", "")),    # [19] per-badge answer
         ])
         # alert: terminated employee whose badge has not been closed out.
         # Cleared by the close-out flow (which requires the return for
@@ -531,7 +532,9 @@ def main():
                     r.get("Escort", "").strip(),
                     r.get("CBP Access", "").strip(),
                     r.get("AOA Driving Privileges", "").strip(),
+                    r.get("Tool Access", "").strip(),
                     r.get("Extra Question", "").strip(),
+                    r.get("Display Note", "").strip(),   # shown on the breakdown
                 ]
     except FileNotFoundError:
         print("badge specs: Badge Specifications.csv not found - form defaults off")
