@@ -958,7 +958,10 @@ function applyTab(){
   $("#act-hint").textContent = drilled
     ? "Renew or deactivate from a row; the New badge row button pre-fills the employee."
     : cov ? "Click a labor distribution to see its people and badges." : "";
-  ["bloc","bloc-l"].forEach(id => $("#" + id).style.display = "none");
+  // the location dropdown exists only on the Deactivated view (Coverage
+  // navigates by folder instead); it always includes All Locations
+  ["bloc","bloc-l"].forEach(id =>
+    $("#" + id).style.display = bview === "termed" ? "" : "none");
   ["bstat","bstat-l"].forEach(id => $("#" + id).style.display = drilled ? "" : "none");
   $("#btitle").innerHTML = bview === "termed"
     ? `Deactivated Badges <span class="sub">&middot; closed-out badges and terminated employees</span>`
