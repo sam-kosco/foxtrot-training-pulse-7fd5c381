@@ -26,6 +26,11 @@ FILES = [
     "Safety101/S101 Compliance/Foxtrot Aviation Services Entire Organization Expiring Training.csv",
     "Safety101/S101 Compliance/Safety101 Emp Import.csv",
     "Paylocity Reports/Basic Employee Info.csv",
+    "Definitive Lists/Badges.csv",
+    "Definitive Lists/Roster.csv",
+    "Definitive Lists/Current Employees.csv",
+    "Definitive Lists/Terminated Employees.csv",
+    "Definitive Lists/Badge Specifications.csv",
     "Definitive Lists/Early Terminations.csv",
 ]
 

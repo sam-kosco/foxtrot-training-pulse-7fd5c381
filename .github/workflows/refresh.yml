@@ -94,6 +94,13 @@ jobs:
           TZ: America/New_York
         run: python build_training.py
 
+      # Badge alert DELIVERY is owned by the platform's daily digest (Sam,
+      # 2026-09-02): one email per recipient per day compiling every platform
+      # alert, so inboxes don't flood. This build still COMPUTES the alerts -
+      # they're published in training_data.json as alertsFeed (employee,
+      # badge, contacts, deep link per alert). badge_alert_emails.py remains
+      # as a manual fallback only and is deliberately not wired here.
+
       - name: Commit and push
         if: steps.guard.outputs.run == 'true'
         run: |
