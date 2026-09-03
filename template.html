@@ -1,7 +1,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex, nofollow, noarchive">
-<title>Foxtrot Training and Credentials</title>
+<title>Foxtrot Training &amp; Credentials</title>
 <style>
 /* Light-only, matching the ERP and Labor Pulse — OS dark mode intentionally ignored */
 :root{
@@ -156,14 +156,14 @@ input.search:focus{outline:none;border-color:var(--orange)}
    page's own topbar to avoid the double-header (standalone visits keep it). */
 [data-embedded] header.topbar,[data-embedded] header:has(.hdr-inner){display:none!important}</style>
 <header class="topbar">
-  <div class="brand">Foxtrot <span>Training and Credentials</span></div>
+  <div class="brand">Foxtrot <span>Training &amp; Credentials</span></div>
   <div class="topmeta">Training compliance &middot; airport badges<br>Data as of <b id="gen"></b></div>
 </header>
 
 <div class="wrap">
   <div class="tabs" role="tablist" aria-label="Page sections">
-    <button class="tab on" id="tab-training" role="tab" aria-selected="true">Training</button>
-    <button class="tab" id="tab-badges" role="tab" aria-selected="false">Badges</button>
+    <button class="tab on" id="tab-training" role="tab" aria-selected="true">Training Dashboard</button>
+    <button class="tab" id="tab-badges" role="tab" aria-selected="false">Badge Tracker</button>
   </div>
 
 <div id="view-training">
@@ -300,9 +300,11 @@ const BADGEAUTH = decodeURIComponent(
   (location.hash.match(/badgeauth=([^&]*)/) || [])[1] || "");
 const BADGEAPI = decodeURIComponent(
   (location.hash.match(/badgeapi=([^&]*)/) || [])[1] || "");
+const EMBEDDED = /(^|[#&])embed=1(?:&|$)/.test(location.hash);
 const CARRY = [PSCRAW,
                (location.hash.match(/badgeauth=[^&]*/) || [])[0] || "",
-               (location.hash.match(/badgeapi=[^&]*/) || [])[0] || ""]
+               (location.hash.match(/badgeapi=[^&]*/) || [])[0] || "",
+               EMBEDDED ? "embed=1" : ""]
   .filter(Boolean).join("&");
 const H0 = location.hash.split("&")[0];
 const setHash = h => history.replaceState(null, "", h + (CARRY ? "&" + CARRY : ""));
@@ -1468,6 +1470,16 @@ $("#rmsel").addEventListener("change", e => {
 });
 $("#locsel").addEventListener("change", e => {
   loc = e.target.value; saveState(); render();
+});
+if (EMBEDDED) document.querySelector(".tabs").style.display = "none";
+window.addEventListener("hashchange", () => {
+  const h0 = location.hash.split("&")[0];
+  if (h0 === "#badges" || h0 === "#coverage") { tab = "badges"; }
+  else if (h0 === "#deactivated" || h0 === "#termed") { tab = "badges"; bview = "termed"; }
+  else if (h0 === "#training") { tab = "training"; }
+  else return;                       // deep links etc. keep load-time behavior
+  saveState(); applyTab();
+  if (tab === "badges") renderBadges();
 });
 $("#tab-training").addEventListener("click", () => {
   tab = "training"; setHash("#training"); saveState(); applyTab();
