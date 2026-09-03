@@ -536,6 +536,7 @@ def main():
                     r.get("Tool Access", "").strip(),
                     r.get("Extra Question", "").strip(),
                     r.get("Display Note", "").strip(),   # shown on the breakdown
+                    r.get("Number Optional", "").strip(),   # [8] access-keys locations
                 ]
     except FileNotFoundError:
         print("badge specs: Badge Specifications.csv not found - form defaults off")

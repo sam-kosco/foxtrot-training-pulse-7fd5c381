@@ -80,9 +80,18 @@ two top tabs — Training | Badges — with Active/Terminated sub-views inside B
   the location's single standard - locked (read-only) on the form. Every non-blank
   question column (Escort, CBP Access, AOA Driving Privileges, Extra Question) is
   an OPEN Yes/No question at that location, never pre-answered; blank = the
-  question does not exist there. CBP value "Leadership only" relabels the field
-  "CBP (Leadership Only)". Extra Question holds location-exclusive questions
-  (BNA's Ramp Access, GoJet's Green Stripe). Specs populate only after a location
+  question does not exist there. The CBP Access column doubles as the location's
+  special question: "Customs" (CVG) renames it Customs and a Yes requires the
+  customs seal number (Customs Number column; shown in the breakdown); any other
+  custom text (DFW's "Envoy hangar access keys") becomes the question's label;
+  "leadership only" anywhere in the value renders ONLY as a note on the question
+  — nothing filters by who is leadership. A Badge Type containing " or "
+  (JAX "Blue or Blue Escort", CAK HQ "SIDA or AOA") leaves the type editable so
+  the user picks; Number Optional = Yes (Access-keys locations SCF JSX, SLN MRO)
+  makes badge number and expiration optional on the form. Extra Question holds
+  location-exclusive questions (BNA's Ramp Access, GoJet's Green Stripe, the
+  "AOA Access" question at JSX/Envoy stations). The form's kind selector reads
+  "Standard airport badge" / "Customer Badge". Specs populate only after a location
   is selected. The location drill-down shows the question list in a strip and a
   per-badge answer column for each of that location's questions (blank answers on
   legacy records = never recorded by the old tracker). Badge Type values in

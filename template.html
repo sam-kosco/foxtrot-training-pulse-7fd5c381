@@ -647,11 +647,12 @@ function renderDrill(){
          <b>Badge Type:</b> Customer Badge (available)`
       : `<b>Badge Type:</b> ${esc(dspec[1]) || "&mdash;"} or Customer Badge`
         + (dspec[2] ? ` &middot; <b>Escort:</b> Yes / No` : "")
-        + (dspec[3] ? ` &middot; <b>${/leadership/i.test(dspec[3])
-            ? "CBP (Leadership Only)" : "CBP Access"}:</b> Yes / No` : "")
+        + (dspec[3] ? ` &middot; <b>${esc(cbpLabel(dspec[3]))}:</b> Yes / No${
+            cbpLead(dspec[3]) ? " (leadership only)" : ""}` : "")
         + (dspec[4] ? ` &middot; <b>AOA Driving Privileges:</b> Yes / No` : "")
         + (dspec[5] ? ` &middot; <b>Tool Access:</b> Yes / No` : "")
         + (dspec[6] ? ` &middot; <b>${esc(dspec[6])}:</b> Yes / No` : "")
+        + (dspec[8] ? ` &middot; badge number &amp; expiration optional` : "")
         + (dspec[7] ? `<div style="margin-top:4px;font-style:italic;
             color:var(--muted)">Note: ${esc(dspec[7])}</div>` : "");
   } else sp.style.display = "none";
@@ -714,8 +715,8 @@ function renderDrill(){
     if (dspec[2]) specCols.push(["Escort", 13, "Escort"]);
     if (dspec[3]) specCols.push(/customs/i.test(dspec[3])
       ? ["Customs", 14, "Customs", "cust"]
-      : [/leadership/i.test(dspec[3])
-        ? "CBP (Leadership Only)" : "CBP Access", 14, "CBP"]);
+      : [cbpLabel(dspec[3]) + (cbpLead(dspec[3]) ? " (leadership only)" : ""),
+         14, /keys/i.test(dspec[3]) ? "Keys" : "CBP"]);
     if (dspec[4]) specCols.push(["AOA Driving Privileges", 15, "AOA Drv"]);
     if (dspec[5]) specCols.push(["Tool Access", 19, "Tools"]);
     if (dspec[6]) specCols.push([dspec[6], 16,
@@ -992,6 +993,17 @@ const parseMDY = s => {
     ? `${m[3]}-${String(+m[1]).padStart(2, "0")}-${String(+m[2]).padStart(2, "0")}`
     : null;
 };
+// the CBP column doubles as the location's leadership/customs question:
+// "Customs" renames it, any other custom text (DFW's Envoy hangar access
+// keys) IS the question's label. "Leadership only" is only ever a NOTE on
+// the question - nothing filters by who is leadership
+const cbpLabel = v => {
+  if (!v) return "";
+  if (/customs/i.test(v)) return "Customs";
+  const t = v.replace(/\(?\s*leadership\s*only\s*\)?/ig, "").trim();
+  return t && !/^yes\b/i.test(t) ? t : "CBP Access";
+};
+const cbpLead = v => /leadership/i.test(v || "");
 const wireDate = id => {
   const el = $("#" + id);
   el.addEventListener("input", () => {
@@ -1035,7 +1047,7 @@ function openNewBadge(prefillName, prefillEid){
       <option value="" selected>&mdash; pick a location &mdash;</option>
       ${folderOpts.map(l => `<option>${esc(l)}</option>`).join("")}</select>`)}
     ${frow("Badge", `<select id="f-kind">
-      <option selected>Location standard badge</option>
+      <option selected>Standard airport badge</option>
       <option>Customer Badge</option></select>`)}
     <div class="kv2" id="f-specnote" style="display:none"></div>
     <div id="f-specwrap">
@@ -1046,7 +1058,8 @@ function openNewBadge(prefillName, prefillEid){
     ${frow("Expiration date (MM/DD/YYYY)", `<input id="f-exp" placeholder="MM/DD/YYYY"
       inputmode="numeric" maxlength="10" autocomplete="off">`)}
     <div id="f-row-escort">${frow("Escort", yn("f-escort", ["Yes", "No"]))}</div>
-    <div id="f-row-cbp">${frow(`<span id="f-cbplabel">CBP Access</span>`,
+    <div id="f-row-cbp">${frow(`<span id="f-cbplabel">CBP Access</span><span
+      id="f-cbpnote" style="color:var(--muted);font-weight:400"></span>`,
       yn("f-cbp", ["Yes", "No"]))}</div>
     <div id="f-row-custnum" style="display:none">${frow("Customs number",
       `<input id="f-custnum" autocomplete="off" placeholder="customs seal number">`)}</div>
@@ -1059,7 +1072,7 @@ function openNewBadge(prefillName, prefillEid){
     <div class="btnrow"><button class="btn ghost" id="f-cancel">Cancel</button>
       <button class="btn primary" id="f-save">Create badge</button></div>`);
   const info = $("#f-empinfo");
-  let custMode = false;
+  let custMode = false, optNumExp = false;
   const applySpec = () => {
     const locv = $("#f-loc").value;
     const spec = DATA.badgeSpecs[locv];
@@ -1068,6 +1081,7 @@ function openNewBadge(prefillName, prefillEid){
     const customer = kindSel.value === "Customer Badge";
     const noAirport = spec && spec[0].toLowerCase() === "no";
     $("#f-cbplabel").textContent = "CBP Access";
+    $("#f-cbpnote").textContent = "";
     // no-badge locations issue Customer Badges only
     kindSel.options[0].disabled = !!noAirport;
     if (noAirport && !customer){
@@ -1078,6 +1092,7 @@ function openNewBadge(prefillName, prefillEid){
       return;
     }
     wrap.style.display = ""; $("#f-save").disabled = false;
+    custMode = false; optNumExp = false;
     // Customer Badge: available at EVERY location, no airport-access questions
     if (customer){
       $("#f-type").value = "Customer Badge";
@@ -1088,7 +1103,7 @@ function openNewBadge(prefillName, prefillEid){
       note.style.display = "";
       note.innerHTML = `<b>Customer Badge</b> &mdash; available at every location; the
         airport-badge questions don't apply. The same person can also hold the
-        location's standard badge under a different badge number.`;
+        standard airport badge under a different badge number.`;
       return;
     }
     if (spec){
@@ -1108,14 +1123,18 @@ function openNewBadge(prefillName, prefillEid){
       $("#f-row-aoa").style.display = spec[4] ? "" : "none";
       $("#f-row-tool").style.display = spec[5] ? "" : "none";
       ["f-escort", "f-cbp", "f-aoa", "f-tool"].forEach(id => $("#" + id).value = "");
-      if (/leadership/i.test(spec[3]))
-        $("#f-cbplabel").textContent = "CBP (Leadership Only)";
-      // Customs mode (CVG): the question is labeled Customs, and a Yes
-      // requires the customs seal number
+      if (spec[3]){
+        $("#f-cbplabel").textContent = cbpLabel(spec[3]);
+        $("#f-cbpnote").textContent = cbpLead(spec[3]) ? " (leadership only)" : "";
+      }
+      // Customs mode (CVG): a Yes requires the customs seal number
       custMode = /customs/i.test(spec[3]);
-      if (custMode) $("#f-cbplabel").textContent = "Customs";
       $("#f-custnum").value = "";
       $("#f-row-custnum").style.display = "none";
+      // Access-keys locations (SCF, SLN): number and expiration are optional
+      optNumExp = !!spec[8];
+      if (optNumExp) note.innerHTML += ` Badge number and expiration date are
+        <b>optional</b> here.`;
       // location-exclusive extra question (Ramp Access, Green Stripe...)
       $("#f-row-xq").style.display = spec[6] ? "" : "none";
       if (spec[6]) { $("#f-xq-label").textContent = spec[6]; $("#f-xq").value = ""; }
@@ -1186,9 +1205,15 @@ function openNewBadge(prefillName, prefillEid){
     const r = EMP[$("#f-emp").value], err = $("#f-err");
     if (!r) { err.textContent = "Pick an employee from the list."; return; }
     if (!$("#f-loc").value) { err.textContent = "Pick the location."; return; }
-    if (!$("#f-num").value.trim()) { err.textContent = "Enter the Badge Number."; return; }
-    const expIso = parseMDY($("#f-exp").value);
-    if (!expIso) { err.textContent = "Enter the expiration date as MM/DD/YYYY."; return; }
+    if (!$("#f-num").value.trim() && !optNumExp) {
+      err.textContent = "Enter the Badge Number."; return; }
+    // access-keys locations may leave number/expiration blank; a typed
+    // date must still be a real MM/DD/YYYY
+    let expIso = "";
+    if ($("#f-exp").value.trim() || !optNumExp){
+      expIso = parseMDY($("#f-exp").value);
+      if (!expIso) { err.textContent = "Enter the expiration date as MM/DD/YYYY."; return; }
+    }
     // only the questions shown for this location must be answered Yes or No
     const asked = [["f-row-escort", "f-escort", "Escort"],
       ["f-row-cbp", "f-cbp", $("#f-cbplabel").textContent],
