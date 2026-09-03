@@ -1061,6 +1061,7 @@ function openNewBadge(prefillName, prefillEid){
     <div id="f-specwrap">
     ${frow("Badge Type", `<input id="f-type" list="typelist" placeholder="set by the
         location's specification&hellip;">
+      <select id="f-typesel" style="display:none"></select>
       <datalist id="typelist">${TYPES.map(t => `<option value="${esc(t)}">`).join("")}</datalist>`)}
     ${frow("Badge Number", `<input id="f-num" autocomplete="off">`)}
     ${frow("Expiration date (MM/DD/YYYY)", `<input id="f-exp" placeholder="MM/DD/YYYY"
@@ -1106,6 +1107,8 @@ function openNewBadge(prefillName, prefillEid){
       $("#f-type").value = "Customer Badge";
       $("#f-type").readOnly = true;
       $("#f-type").style.background = "var(--rowtint)";
+      $("#f-type").style.display = "";
+      $("#f-typesel").style.display = "none";
       ["f-row-escort", "f-row-cbp", "f-row-custnum", "f-row-aoa", "f-row-tool",
        "f-row-xq"].forEach(id => $("#" + id).style.display = "none");
       note.style.display = "";
@@ -1116,15 +1119,22 @@ function openNewBadge(prefillName, prefillEid){
     }
     if (spec){
       note.style.display = "";
-      // a location with two standard types ("Blue or Blue Escort") leaves the
-      // field editable so the user picks; single-type locations stay locked
+      // a location with two standard types (CAK HQ "SIDA or AOA", JAX "Blue
+      // or Blue Escort") gets a dropdown so the user picks - never free-typed;
+      // single-type locations stay locked
       const multiType = / or /i.test(spec[1]);
       note.innerHTML = `Standard specification for <b>${esc(locv)}</b> loaded &mdash;
         answer each question Yes or No.` + (multiType
-        ? ` Badge Type here is <b>${esc(spec[1])}</b> &mdash; edit the field to the one issued.` : "");
-      $("#f-type").value = spec[1];
-      $("#f-type").readOnly = !multiType;
-      $("#f-type").style.background = multiType ? "" : "var(--rowtint)";
+        ? ` This location issues more than one badge type &mdash; pick the one issued.` : "");
+      const tsel = $("#f-typesel");
+      $("#f-type").style.display = multiType ? "none" : "";
+      tsel.style.display = multiType ? "" : "none";
+      if (multiType)
+        tsel.innerHTML = `<option value="" selected>&mdash; pick the badge type &mdash;</option>`
+          + spec[1].split(/\s+or\s+/i).map(t => `<option>${esc(t)}</option>`).join("");
+      $("#f-type").value = multiType ? "" : spec[1];
+      $("#f-type").readOnly = true;
+      $("#f-type").style.background = "var(--rowtint)";
       // only this location's questions appear, always initially unanswered
       $("#f-row-escort").style.display = spec[2] ? "" : "none";
       $("#f-row-cbp").style.display = spec[3] ? "" : "none";
@@ -1150,6 +1160,8 @@ function openNewBadge(prefillName, prefillEid){
       // no specification on file: everything manual and visible
       $("#f-type").readOnly = false;
       $("#f-type").style.background = "";
+      $("#f-type").style.display = "";
+      $("#f-typesel").style.display = "none";
       ["f-row-escort", "f-row-cbp", "f-row-aoa", "f-row-tool"].forEach(id =>
         $("#" + id).style.display = "");
       $("#f-row-xq").style.display = "none";
@@ -1235,8 +1247,13 @@ function openNewBadge(prefillName, prefillEid){
         return;
       }
     }
+    const multiSel = $("#f-typesel").style.display !== "none";
+    if (multiSel && !$("#f-typesel").value){
+      err.textContent = "Pick the badge type."; return;
+    }
     const payload = {action: "create", employeeId: r[0], employeeName: r[1],
-      location: $("#f-loc").value, badgeType: $("#f-type").value.trim(),
+      location: $("#f-loc").value,
+      badgeType: multiSel ? $("#f-typesel").value : $("#f-type").value.trim(),
       badgeNumber: $("#f-num").value.trim(), expiration: expIso,
       requestedAt: new Date().toISOString()};
     if (custMode && $("#f-cbp").value === "Yes" && !$("#f-custnum").value.trim()){
