@@ -39,8 +39,9 @@ the complete spec for those pieces.
 > Item 2 is BUILT the same day: the platform's per-user morning digest
 > (foxtrot-platform engine/digest.py) consumes `alertsFeed` and scopes
 > each alert to the right people via the org chart — gated on the
-> USER_DIGEST app setting until platform onboarding. Item 3 (feeds.json
-> registration, drawer rename) is still open.
+> USER_DIGEST app setting until platform onboarding. The drawer rename
+> ("Training & Credentials") shipped 2026-09-03; feeds.json registration
+> is the one remaining config ask.
 
 Recommended shape — the Hiring Requests pattern (Pattern A):
 
