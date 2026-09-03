@@ -120,6 +120,28 @@ def main():
     recent_ids = set()
     hire_by_id = {}          # norm id -> hire date (for the S101 due column)
     alias_by_eid = {}        # norm id -> {normalized "first last"} incl. preferred name
+    # display names standardize to "Firstname Lastname" no matter how the
+    # source file spells them ("ursula moffitt", "PENTZ, ANTHONY"); tokens
+    # with internal caps (McCoy, DiGiambattista), hyphens and suffixes survive
+    _SUFFIX = {"ii": "II", "iii": "III", "iv": "IV", "jr": "Jr", "sr": "Sr"}
+    def fix_display_name(n):
+        n = " ".join(n.split())
+        if "," in n:
+            last, first = n.split(",", 1)
+            n = f"{first.strip()} {last.strip()}"
+        def cap(seg):
+            return seg[:1].upper() + seg[1:].lower() if seg else seg
+        out = []
+        for t in n.split():
+            base = t.rstrip(".").lower()
+            if base in _SUFFIX:
+                out.append(_SUFFIX[base])
+            elif t.isupper() or t.islower():
+                out.append("-".join(cap(s) for s in t.split("-")))
+            else:
+                out.append(t[:1].upper() + t[1:])
+        return " ".join(out)
+
     basic_emp = {}   # norm id -> (status, labor, position, name): badge join fallback
     for r in read_csv("empinfo"):
         nid = norm_eid(r["Employee Id"])
@@ -127,8 +149,9 @@ def main():
             basic_emp[nid] = (r.get("Employee Status Description", "").strip(),
                               r.get("Labor Dist Description", "").strip(),
                               r.get("Position Description", "").strip(),
-                              f"{(r.get('Preferred First Name', '').strip() or r.get('First Name', '').strip())} "
-                              f"{r.get('Last Name', '').strip()}".strip())
+                              fix_display_name(
+                                  f"{(r.get('Preferred First Name', '').strip() or r.get('First Name', '').strip())} "
+                                  f"{r.get('Last Name', '').strip()}".strip()))
         last = r.get("Last Name", "").strip()
         if last:
             # Both legal and preferred first names, so an LMS row filed under a
@@ -314,8 +337,9 @@ def main():
             cur_emp[cid] = (r.get("Status", "").strip() or "Active",
                             r.get("Home Labor Assignment", "").strip(),
                             r.get("Position", "").strip(),
-                            f"{r.get('First Name', '').strip()} "
-                            f"{r.get('Last Name', '').strip()}".strip())
+                            fix_display_name(
+                                f"{r.get('First Name', '').strip()} "
+                                f"{r.get('Last Name', '').strip()}".strip()))
     term_emp, term_names = {}, {}
     for r in read_csv("termedcsv"):
         tid = norm_eid(r.get("Employee Id", ""))
@@ -324,8 +348,9 @@ def main():
         term_emp[tid] = (r.get("Labor Dist Description", "").strip(),
                          (r.get("Position Description", "").strip()
                           or r.get("Job Title", "").strip()),
-                         f"{(r.get('Preferred First Name', '').strip() or r.get('First Name', '').strip())} "
-                         f"{r.get('Last Name', '').strip()}".strip())
+                         fix_display_name(
+                             f"{(r.get('Preferred First Name', '').strip() or r.get('First Name', '').strip())} "
+                             f"{r.get('Last Name', '').strip()}".strip()))
         tlast = r.get("Last Name", "").strip()
         for fn in (r.get("First Name", ""), r.get("Preferred First Name", "")):
             if fn.strip() and tlast:
@@ -334,7 +359,7 @@ def main():
                                    and term_names[key] != tid else tid)
     badge_rows, badge_locs, badge_alerts = [], set(), []
     for r in read_csv("badges"):
-        bname = r.get("Employee Name", "").strip()
+        bname = fix_display_name(r.get("Employee Name", "").strip())
         if not bname:
             continue
         bloc = r.get("Location", "").strip()
@@ -551,7 +576,7 @@ def main():
                  or r.get("First Name", "").strip())
         last = r.get("Last Name", "").strip()
         if eid and (first or last):
-            roster_min.append([eid, f"{first} {last}".strip(),
+            roster_min.append([eid, fix_display_name(f"{first} {last}".strip()),
                                r.get("Labor Dist", "").strip(),
                                r.get("Job Title", "").strip()])
     roster_min.sort(key=lambda x: x[1].lower())
