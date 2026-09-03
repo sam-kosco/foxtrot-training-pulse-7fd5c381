@@ -24,6 +24,19 @@ the complete spec for those pieces.
 
 ## 1. Save backend (takes the forms out of preview mode)
 
+> **BUILT 2026-09-03 (Sam):** engine/badges.py + `POST /api/badges/create|
+> renew|deactivate` on the platform, writing Badges.csv exactly per the
+> mapping below (deactivation `note` goes to the Notes column; every action
+> also stamps an audit note "date actor: action"). One deviation from the
+> sketch: auth is NOT the session cookie — the embed is cross-origin, so
+> the platform mints a signed token into the iframe hash (`badgeauth`/
+> `badgeapi`, beside `#pscope`) for real users with the new **Badges**
+> permission (access-only, granted per person on the matrix), and
+> `submitAction()` in template.html sends it as a Bearer header. No hash
+> (public page, mirror) = preview mode stays. A save also nudges this
+> repo's refresh workflow (10-min debounce) so the page catches up fast.
+> Items 2 (digest delivery) and 3 (config asks) are still open.
+
 Recommended shape — the Hiring Requests pattern (Pattern A):
 
 - `engine/badges.py` — validation + the write

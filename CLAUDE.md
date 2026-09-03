@@ -116,9 +116,17 @@ two top tabs — Training | Badges — with Active/Terminated sub-views inside B
 - **Actions** (modeled on the Hiring Hub's interaction patterns): New Badge / Renew /
   Deactivate modal forms. Deactivation requires the physical badge marked returned
   plus who received it. Forms run in PREVIEW MODE — they display the JSON payload
-  that will go to the platform's badge endpoints (`/api/badges/*`, Hiring-Hub-style
-  — no Power Automate; spec in PLATFORM_HANDOFF.md) once Sam wires them; nothing
-  writes yet.
+  submitted. **LIVE inside the platform embed (2026-09-03):** the platform's
+  `/api/training/scope` mints a signed token for real users holding the Badges
+  permission, the shell rides it into the iframe hash (`badgeauth`/`badgeapi`,
+  beside `#pscope`), and `submitAction()` POSTs it as a Bearer header to the
+  platform's `/api/badges/create|renew|deactivate` (engine/badges.py — writes
+  Badges.csv directly, re-validates everything, dispatches this repo's refresh
+  workflow debounced so the page catches up in minutes). No hash = no token =
+  preview mode — the PUBLIC page and the legacy mirror can never save; that
+  asymmetry is the access control, exactly like #pscope. `setHash` carries the
+  badge params through the page's own hash writes (CARRY) so tab switches
+  don't drop the credentials.
 - **Deep links:** `#badge/<id>` highlights a row; `#renew/<id>` opens that badge's
   renewal form (target for alert emails).
 

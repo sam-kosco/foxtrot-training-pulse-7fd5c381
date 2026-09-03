@@ -288,12 +288,24 @@ const UNM = "__UNMATCHED__";   // pseudo labor dist: unmatched badge records
 // #renew/BDG-0012 additionally opens the renewal form for that badge
 const DEEPRENEW = (location.hash.match(/^#renew\/([\w-]+)/i) || [])[1] || null;
 const DEEP = (location.hash.match(/^#badge\/([\w-]+)/i) || [])[1] || DEEPRENEW;
-// the platform's scope payload rides the hash beside our tab hashes
-// ("#badges&pscope=..."): compare on the base part, and carry the payload
-// through our own hash writes so a mid-session reload stays scoped
+// the platform's payloads ride the hash beside our tab hashes
+// ("#badges&pscope=...&badgeauth=..."): compare on the base part, and carry
+// every platform param through our own hash writes so a mid-session reload
+// stays scoped AND keeps the badge-save credentials
 const PSCRAW = (location.hash.match(/pscope=[^&]*/) || [])[0] || "";
+// badge-save channel (platform embed only): badgeauth is a short-lived
+// signed token the platform minted for this real user; badgeapi is where
+// to POST. Absent on the public page and mirror -> forms stay in preview.
+const BADGEAUTH = decodeURIComponent(
+  (location.hash.match(/badgeauth=([^&]*)/) || [])[1] || "");
+const BADGEAPI = decodeURIComponent(
+  (location.hash.match(/badgeapi=([^&]*)/) || [])[1] || "");
+const CARRY = [PSCRAW,
+               (location.hash.match(/badgeauth=[^&]*/) || [])[0] || "",
+               (location.hash.match(/badgeapi=[^&]*/) || [])[0] || ""]
+  .filter(Boolean).join("&");
 const H0 = location.hash.split("&")[0];
-const setHash = h => history.replaceState(null, "", h + (PSCRAW ? "&" + PSCRAW : ""));
+const setHash = h => history.replaceState(null, "", h + (CARRY ? "&" + CARRY : ""));
 try{
   const s = JSON.parse(sessionStorage.getItem("tp-state") || "{}");
   if (s.rm === ALL || S_MGRS[s.rm]) rm = s.rm ?? ALL;
@@ -1027,12 +1039,52 @@ const frow = (lab, inner) =>
 function showPreview(payload){
   modal.querySelector(".mbody").innerHTML = `
     <div class="kv2" style="background:#e3f4ea;border-color:#bfe3cd"><b>Preview mode.</b>
-      This is exactly what will be saved once badge actions are wired into the
-      platform's backend (Hiring Hub-style, no Power Automate) &mdash; nothing
-      has been changed yet.</div>
+      This is what a save submits. Badge actions save for platform users with
+      the Badges permission &mdash; open this page from the platform's Training
+      section to submit for real. Nothing has been changed.</div>
     <div class="previewbox">${esc(JSON.stringify(payload, null, 2))}</div>
     <div class="btnrow"><button class="btn ghost" id="f-close">Close</button></div>`;
   $("#f-close").onclick = closeModal;
+}
+
+/* Live save (platform embed only — BADGEAUTH rides the iframe hash). The
+ * public page and legacy mirror have no token and fall back to preview.
+ * On success the modal reports it and notes the lag: the CSV is updated
+ * immediately, but this PAGE shows the change after its next build (the
+ * platform nudges a rebuild after each save, so usually a few minutes). */
+function submitAction(payload){
+  if (!BADGEAUTH) { showPreview(payload); return; }
+  const btn = $("#f-save");
+  const btnLabel = btn ? btn.textContent : "";
+  if (btn){ btn.disabled = true; btn.textContent = "Saving…"; }
+  const fail = (msg) => {
+    if (btn){ btn.disabled = false; btn.textContent = btnLabel; }
+    let e = modal.querySelector(".formerr");
+    if (!e){
+      e = document.createElement("div");
+      e.className = "kv2 formerr";
+      e.style.cssText = "background:#fdeaea;border-color:#f3c1c1;color:#8a1f1f";
+      modal.querySelector(".mbody").prepend(e);
+    }
+    e.textContent = msg;
+  };
+  fetch(`${BADGEAPI}/api/badges/${payload.action}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json",
+               "Authorization": "Bearer " + BADGEAUTH },
+    body: JSON.stringify(payload),
+  }).then(async r => {
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { fail(d.error || `Save failed (${r.status}).`); return; }
+    modal.querySelector(".mbody").innerHTML = `
+      <div class="kv2" style="background:#e3f4ea;border-color:#bfe3cd">
+        <b>Saved.</b> ${esc(d.badgeId || "")} written to Badges.csv.
+        This page still shows the old data until its next rebuild &mdash;
+        one was just requested, so give it a few minutes.</div>
+      <div class="btnrow"><button class="btn ghost" id="f-close">Close</button></div>`;
+    $("#f-close").onclick = closeModal;
+  }).catch(() => fail("Network error — the save may not have gone through. "
+    + "Check the page after the next rebuild before retrying."));
 }
 
 function openNewBadge(prefillName, prefillEid){
@@ -1269,7 +1321,7 @@ function openNewBadge(prefillName, prefillEid){
     }
     if (custMode && $("#f-cbp").value === "Yes")
       payload.customsNumber = $("#f-custnum").value.trim();
-    showPreview(payload);
+    submitAction(payload);
   };
 }
 
@@ -1290,7 +1342,7 @@ function openRenew(bid){
   $("#f-save").onclick = () => {
     const expIso = parseMDY($("#f-exp").value);
     if (!expIso) { $("#f-err").textContent = "Enter the new expiration date as MM/DD/YYYY."; return; }
-    showPreview({action: "renew", badgeId: b[0], employeeId: b[1], employeeName: b[2],
+    submitAction({action: "renew", badgeId: b[0], employeeId: b[1], employeeName: b[2],
       badgeNumber: b[4], location: b[9], newExpiration: expIso,
       requestedAt: new Date().toISOString()});
   };
@@ -1365,7 +1417,7 @@ function openDeactivate(bid){
     const now = new Date();
     const deactivatedDate = `${now.getFullYear()}-${String(now.getMonth() + 1)
       .padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-    showPreview({action: "deactivate", badgeId: b[0], employeeId: b[1], employeeName: b[2],
+    submitAction({action: "deactivate", badgeId: b[0], employeeId: b[1], employeeName: b[2],
       badgeNumber: b[4], location: b[9], reason, returned,
       receivedBy: recv, note, deactivatedDate,
       requestedAt: now.toISOString()});
