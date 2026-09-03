@@ -116,7 +116,9 @@ two top tabs — Training | Badges — with Active/Terminated sub-views inside B
 - **Actions** (modeled on the Hiring Hub's interaction patterns): New Badge / Renew /
   Deactivate modal forms. Deactivation requires the physical badge marked returned
   plus who received it. Forms run in PREVIEW MODE — they display the JSON payload
-  that will go to the Power Automate save relay once Sam wires it; nothing writes yet.
+  that will go to the platform's badge endpoints (`/api/badges/*`, Hiring-Hub-style
+  — no Power Automate; spec in PLATFORM_HANDOFF.md) once Sam wires them; nothing
+  writes yet.
 - **Deep links:** `#badge/<id>` highlights a row; `#renew/<id>` opens that badge's
   renewal form (target for alert emails).
 
