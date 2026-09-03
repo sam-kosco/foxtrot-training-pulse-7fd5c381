@@ -117,8 +117,10 @@ two top tabs — Training | Badges — with Active/Terminated sub-views inside B
   Deactivate modal forms. Deactivation requires the physical badge marked returned
   plus who received it. Forms run in PREVIEW MODE — they display the JSON payload
   submitted. **LIVE inside the platform embed (2026-09-03):** the platform's
-  `/api/training/scope` mints a signed token for real users holding the Badges
-  permission, the shell rides it into the iframe hash (`badgeauth`/`badgeapi`,
+  `/api/training/scope` mints a signed token for real users holding TRAINING
+  access (badges and the training pulse are one permission — Sam, 2026-09-03,
+  so every platform account can save by default),
+  the shell rides it into the iframe hash (`badgeauth`/`badgeapi`,
   beside `#pscope`), and `submitAction()` POSTs it as a Bearer header to the
   platform's `/api/badges/create|renew|deactivate` (engine/badges.py — writes
   Badges.csv directly, re-validates everything, dispatches this repo's refresh

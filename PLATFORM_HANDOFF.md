@@ -30,12 +30,17 @@ the complete spec for those pieces.
 > also stamps an audit note "date actor: action"). One deviation from the
 > sketch: auth is NOT the session cookie — the embed is cross-origin, so
 > the platform mints a signed token into the iframe hash (`badgeauth`/
-> `badgeapi`, beside `#pscope`) for real users with the new **Badges**
-> permission (access-only, granted per person on the matrix), and
+> `badgeapi`, beside `#pscope`) for real users with **Training access**
+> (badges and the training pulse are one permission — Sam, 2026-09-03;
+> Training defaults on for platform accounts, so every user can save), and
 > `submitAction()` in template.html sends it as a Bearer header. No hash
 > (public page, mirror) = preview mode stays. A save also nudges this
 > repo's refresh workflow (10-min debounce) so the page catches up fast.
-> Items 2 (digest delivery) and 3 (config asks) are still open.
+> Item 2 is BUILT the same day: the platform's per-user morning digest
+> (foxtrot-platform engine/digest.py) consumes `alertsFeed` and scopes
+> each alert to the right people via the org chart — gated on the
+> USER_DIGEST app setting until platform onboarding. Item 3 (feeds.json
+> registration, drawer rename) is still open.
 
 Recommended shape — the Hiring Requests pattern (Pattern A):
 
