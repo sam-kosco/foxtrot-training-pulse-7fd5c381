@@ -195,19 +195,40 @@ def main():
     # ---- LMS transcript: Completed / Overdue / Incomplete (= Not Started + In Progress)
     lms_detail = []          # Overdue + Incomplete rows for the on-page table
     lms_people = {}          # norm name -> {name, locs, c, o, i}
-    LMS_STATE = {"Completed": "c", "Overdue": "o",
-                 "Not Started": "i", "In Progress": "i"}
+    # State from two Paylocity columns. `Status` carries Completed/Overdue/Not
+    # Started (+ legacy In Progress); `Training Status` carries the enrollment
+    # state incl. In Progress / Registered / **Rescinded**. Classify so that:
+    #   - Rescinded (assignment removed after the fact) is exempt entirely;
+    #   - In Progress / Registered are Incomplete ("walk") even when past due —
+    #     the new export moved In Progress out of `Status` into `Training Status`,
+    #     so reading only `Status` would wrongly count them Overdue;
+    #   - otherwise Completed -> c, Overdue -> o, Not Started -> i.
+    # Blank `Training Status` (older transcripts) falls back to `Status` alone,
+    # reproducing the previous behavior exactly.
+    def lms_state(status, tstatus):
+        if tstatus == "Rescinded":
+            return None                       # removed assignment — exempt
+        if status == "Completed" or tstatus == "Completed":
+            return "c"
+        if tstatus in ("In Progress", "Registered"):
+            return "i"
+        if status == "Overdue":
+            return "o"
+        if status in ("Not Started", "In Progress") or tstatus == "Not Started":
+            return "i"
+        return None
     for r in read_csv("lms"):
         emp = " ".join(r["Employee"].split())
         course = " ".join(r["Course Title"].split())
         loc = r["Location"].strip()
         status = r["Status"].strip()
+        tstatus = r.get("Training Status", "").strip()
         due = r.get("Due Date", "").strip()
-        if not emp or status not in LMS_STATE or loc in DASH_EXCLUDE:
+        state = lms_state(status, tstatus)
+        if not emp or state is None or loc in DASH_EXCLUDE:
             continue
         if norm_name(emp) in et_names:
             continue          # early-termed (form ahead of Paylocity)
-        state = LMS_STATE[status]
         a = agg(loc)
         a[{"c": "lmsC", "o": "lmsO", "i": "lmsI"}[state]] += 1
         p = lms_people.setdefault(norm_name(emp), {
