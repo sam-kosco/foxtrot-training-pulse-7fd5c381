@@ -231,12 +231,14 @@ def main():
             continue          # early-termed (form ahead of Paylocity)
         a = agg(loc)
         a[{"c": "lmsC", "o": "lmsO", "i": "lmsI"}[state]] += 1
-        p = lms_people.setdefault(norm_name(emp), {
-            "name": emp, "locs": set(), "c": 0, "o": 0, "i": 0, "id": ""})
-        if not p["id"]:
-            lms_id = r.get("Employee ID", "").strip()
-            if lms_id:
-                p["id"] = norm_eid(lms_id)   # Paylocity payroll id (matches S101 Emp ID)
+        # Key LMS people by payroll id (fall back to name for blank-id / old
+        # transcripts). Keying by name alone merged two different people who
+        # share a name — e.g. the two distinct Levorn Smallwoods, ids 57368 &
+        # 60387 — into one row with combined coursework.
+        lms_id = norm_eid(r.get("Employee ID", "").strip())
+        pkey = lms_id or ("name:" + norm_name(emp))
+        p = lms_people.setdefault(pkey, {
+            "name": emp, "locs": set(), "c": 0, "o": 0, "i": 0, "id": lms_id})
         p["locs"].add(loc)
         p[state] += 1
         if state == "o":
@@ -302,39 +304,45 @@ def main():
     #      as a fallback for LMS rows whose Employee ID is blank, and a name
     #      candidate is rejected if it carries a DIFFERENT payroll id (provably
     #      a different person).
-    lms_by_id = {}
-    for key, p in lms_people.items():
-        if p.get("id"):
-            lms_by_id.setdefault(p["id"], key)   # first wins; same-id collisions are rare
-    lms_by_fl = {}
-    for key, p in lms_people.items():
-        toks = key.split()
+    # Index LMS people by display name for the fallback paths. lms_people is
+    # keyed by payroll id (or "name:<norm>" when the id is blank), so same-named
+    # people are distinct entries; a name can therefore map to several keys.
+    lms_by_name, lms_by_fl = {}, {}
+    for pkey, p in lms_people.items():
+        nk = norm_name(p["name"])
+        lms_by_name.setdefault(nk, []).append(pkey)
+        toks = nk.split()
         if len(toks) >= 2:
-            lms_by_fl.setdefault((toks[0], toks[-1]), []).append(key)
+            lms_by_fl.setdefault((toks[0], toks[-1]), []).append(pkey)
 
     s101_sorted = sorted(s101_people.items())
     matched, claimed = {}, set()         # s101 eid -> lms key
     id_hits = name_hits = fallback_hits = 0
-    # Pass 1 (global): exact Employee ID. Done for everyone first so an id match
-    # always takes priority over any name match — a later name pass can never
-    # steal an LMS person that belongs to someone by id.
+    # Pass 1 (global): exact Employee ID. An id-keyed LMS entry has key == id,
+    # so this is a direct lookup; done for everyone first so an id match always
+    # beats a name match and the name pass can't steal an id-owned LMS person.
     for eid, sp in s101_sorted:
-        key = lms_by_id.get(norm_eid(eid))
-        if key and key not in claimed:
-            matched[eid] = key
-            claimed.add(key)
+        nid = norm_eid(eid)
+        if nid in lms_people and nid not in claimed:
+            matched[eid] = nid
+            claimed.add(nid)
             id_hits += 1
-    # Pass 2: name / preferred-name alias, then first+last, over the leftovers.
-    # An unclaimed LMS person here has no id-twin among S101 (its id matched no
-    # one), so name-matching it is correct — this is what reunites a person the
-    # two systems hold under DIFFERENT ids (e.g. S101 60387 vs Paylocity 57368).
+    # Pass 2: name / preferred-name alias, then first+last, over the leftovers
+    # (blank-id LMS rows, old transcripts). A name is matched only when it
+    # resolves to a SINGLE unclaimed LMS person — two same-named people that
+    # pass 1 didn't disambiguate are left rather than guessed.
     for eid, sp in s101_sorted:
         if eid in matched:
             continue
         nid = norm_eid(eid)
         raw, _ = emp_names.get(eid, (f"Employee {eid}", ""))
         cand_keys = {norm_name(last_first_to_display(raw))} | alias_by_eid.get(nid, set())
-        m = next((ck for ck in cand_keys if ck in lms_people and ck not in claimed), None)
+        m = None
+        for ck in cand_keys:
+            cands = [k for k in lms_by_name.get(ck, []) if k not in claimed]
+            if len(cands) == 1:
+                m = cands[0]
+                break
         if m:
             matched[eid] = m
             claimed.add(m)
