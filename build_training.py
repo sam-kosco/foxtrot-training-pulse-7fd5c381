@@ -232,7 +232,11 @@ def main():
         a = agg(loc)
         a[{"c": "lmsC", "o": "lmsO", "i": "lmsI"}[state]] += 1
         p = lms_people.setdefault(norm_name(emp), {
-            "name": emp, "locs": set(), "c": 0, "o": 0, "i": 0})
+            "name": emp, "locs": set(), "c": 0, "o": 0, "i": 0, "id": ""})
+        if not p["id"]:
+            lms_id = r.get("Employee ID", "").strip()
+            if lms_id:
+                p["id"] = norm_eid(lms_id)   # Paylocity payroll id (matches S101 Emp ID)
         p["locs"].add(loc)
         p[state] += 1
         if state == "o":
@@ -291,37 +295,71 @@ def main():
                            r["Department"].strip(), due])
     exp_detail.sort(key=lambda x: (x[2], x[0]))
 
-    # ---- Join S101 people to LMS people by name for the watchlist
+    # ---- Join S101 people to LMS people for the watchlist. ID-FIRST: the LMS
+    #      transcript now carries Employee ID (same Paylocity payroll id as
+    #      S101's Emp ID), so match on it exactly — the authoritative key that
+    #      can't be fooled by nicknames. The name / preferred-name path remains
+    #      as a fallback for LMS rows whose Employee ID is blank, and a name
+    #      candidate is rejected if it carries a DIFFERENT payroll id (provably
+    #      a different person).
+    lms_by_id = {}
+    for key, p in lms_people.items():
+        if p.get("id"):
+            lms_by_id.setdefault(p["id"], key)   # first wins; same-id collisions are rare
     lms_by_fl = {}
     for key, p in lms_people.items():
         toks = key.split()
         if len(toks) >= 2:
             lms_by_fl.setdefault((toks[0], toks[-1]), []).append(key)
-    people, claimed, fallback_hits, misses = [], set(), 0, 0
-    for eid, sp in sorted(s101_people.items()):
+
+    s101_sorted = sorted(s101_people.items())
+    matched, claimed = {}, set()         # s101 eid -> lms key
+    id_hits = name_hits = fallback_hits = 0
+    # Pass 1 (global): exact Employee ID. Done for everyone first so an id match
+    # always takes priority over any name match — a later name pass can never
+    # steal an LMS person that belongs to someone by id.
+    for eid, sp in s101_sorted:
+        key = lms_by_id.get(norm_eid(eid))
+        if key and key not in claimed:
+            matched[eid] = key
+            claimed.add(key)
+            id_hits += 1
+    # Pass 2: name / preferred-name alias, then first+last, over the leftovers.
+    # An unclaimed LMS person here has no id-twin among S101 (its id matched no
+    # one), so name-matching it is correct — this is what reunites a person the
+    # two systems hold under DIFFERENT ids (e.g. S101 60387 vs Paylocity 57368).
+    for eid, sp in s101_sorted:
+        if eid in matched:
+            continue
+        nid = norm_eid(eid)
+        raw, _ = emp_names.get(eid, (f"Employee {eid}", ""))
+        cand_keys = {norm_name(last_first_to_display(raw))} | alias_by_eid.get(nid, set())
+        m = next((ck for ck in cand_keys if ck in lms_people and ck not in claimed), None)
+        if m:
+            matched[eid] = m
+            claimed.add(m)
+            name_hits += 1
+            continue
+        for ck in cand_keys:
+            toks = ck.split()
+            if len(toks) < 2:
+                continue
+            cands = [k for k in lms_by_fl.get((toks[0], toks[-1]), []) if k not in claimed]
+            if len(cands) == 1:
+                matched[eid] = cands[0]
+                claimed.add(cands[0])
+                fallback_hits += 1
+                break
+
+    people, misses = [], 0
+    for eid, sp in s101_sorted:
         raw, title = emp_names.get(eid, (f"Employee {eid}", ""))
-        display = last_first_to_display(raw)
-        # Candidate join keys: the S101/legal display name plus BEI name variants
-        # (incl. Preferred First Name) so an LMS row under a nickname still matches.
-        cand_keys = {norm_name(display)} | alias_by_eid.get(norm_eid(eid), set())
-        match = next((ck for ck in cand_keys
-                      if ck in lms_people and ck not in claimed), None)
-        if not match:
-            for ck in cand_keys:
-                toks = ck.split()
-                if len(toks) < 2:
-                    continue
-                cands = [k for k in lms_by_fl.get((toks[0], toks[-1]), [])
-                         if k not in claimed]
-                if len(cands) == 1:
-                    match, fallback_hits = cands[0], fallback_hits + 1
-                    break
-        entry = {"n": display, "t": title, "l": sorted(sp["locs"]),
+        entry = {"n": last_first_to_display(raw), "t": title, "l": sorted(sp["locs"]),
                  "sc": sp["c"], "so": sp["o"], "si": sp["i"], "sp": sp["p"],
                  "lc": 0, "lo": 0, "li": 0}
-        if match:
-            lp = lms_people[match]
-            claimed.add(match)
+        m = matched.get(eid)
+        if m:
+            lp = lms_people[m]
             entry["l"] = sorted(set(entry["l"]) | lp["locs"])
             entry["lc"], entry["lo"], entry["li"] = lp["c"], lp["o"], lp["i"]
         else:
@@ -333,9 +371,17 @@ def main():
         people.append({"n": lp["name"], "t": "", "l": sorted(lp["locs"]),
                        "sc": 0, "so": 0, "si": 0, "sp": 0,
                        "lc": lp["c"], "lo": lp["o"], "li": lp["i"]})
-    print(f"name join: {len(s101_people) - misses}/{len(s101_people)} S101 "
-          f"people matched to LMS ({fallback_hits} via first+last fallback); "
+    print(f"S101<->LMS join: {id_hits} by id, {name_hits} by name, {fallback_hits} "
+          f"by first+last; {misses}/{len(s101_people)} S101 unmatched; "
           f"{len(lms_people) - len(claimed)} LMS-only people")
+    if os.environ.get("JOIN_DEBUG"):
+        for eid, sp in s101_sorted:
+            if eid not in matched:
+                raw, _ = emp_names.get(eid, (f"Employee {eid}", ""))
+                print(f"  UNMATCHED S101 {eid} ({raw}) norm={norm_name(last_first_to_display(raw))!r}")
+        for key, lp in lms_people.items():
+            if key not in claimed:
+                print(f"  LMS-only {lp['name']!r} id={lp.get('id')!r} key={key!r}")
 
     # ---- Badges (the Credentials tab): one row per badge from the
     #      consolidated Badges.csv. Time-based statuses are recomputed at
