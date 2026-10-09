@@ -157,13 +157,14 @@ input.search:focus{outline:none;border-color:var(--orange)}
 [data-embedded] header.topbar,[data-embedded] header:has(.hdr-inner){display:none!important}</style>
 <header class="topbar">
   <div class="brand">Foxtrot <span>Training &amp; Credentials</span></div>
-  <div class="topmeta">Training compliance &middot; airport badges<br>Data as of <b id="gen"></b></div>
+  <div class="topmeta">Training compliance &middot; airport badges &middot; external credentials<br>Data as of <b id="gen"></b></div>
 </header>
 
 <div class="wrap">
   <div class="tabs" role="tablist" aria-label="Page sections">
     <button class="tab on" id="tab-training" role="tab" aria-selected="true">Training Dashboard</button>
     <button class="tab" id="tab-badges" role="tab" aria-selected="false">Badge Tracker</button>
+    <button class="tab" id="tab-ext" role="tab" aria-selected="false">External Credentials</button>
   </div>
 
 <div id="view-training">
@@ -246,6 +247,41 @@ input.search:focus{outline:none;border-color:var(--orange)}
   <div class="note" id="bnote"></div>
 </div><!-- /view-badges -->
 
+<div id="view-ext" style="display:none">
+  <h2 id="ec-title">External Credentials <span class="sub">&middot; Y numbers and other
+    airport-issued credentials</span></h2>
+  <div class="subtabs" role="tablist" aria-label="Credential views">
+    <button class="stab on" id="ec-sub-cov" role="tab" aria-selected="true">Coverage</button>
+    <button class="stab" id="ec-sub-de" role="tab" aria-selected="false">Deactivated</button>
+  </div>
+  <div class="controls">
+    <label for="ec-type">Credential</label>
+    <select id="ec-type" aria-label="Choose credential type"></select>
+    <label for="ec-stat" id="ec-stat-l">Status</label>
+    <select id="ec-stat" aria-label="Filter by credential status"></select>
+    <label for="ec-q">Search</label>
+    <input id="ec-q" class="search" type="search" placeholder="name, ID, credential number"
+      aria-label="Search credentials">
+  </div>
+  <div class="actbar">
+    <button class="btn ghost" id="ec-back" style="display:none">&larr; All locations</button>
+    <button class="btn primary" id="ec-new">&#65291; New Credential</button>
+    <span style="font-size:12.5px;color:var(--muted)" id="ec-hint"></span>
+  </div>
+  <div class="card" id="ec-alerts" style="display:none">
+    <div class="hd"></div>
+    <div class="scroller" id="ec-alertbody"></div>
+  </div>
+  <div class="kpis" id="ec-kpis"></div>
+  <div class="kv2" id="ec-req" style="display:none"></div>
+  <div class="card">
+    <div class="hd" id="ec-hd"></div>
+    <div class="vscroll" style="max-height:560px"><div class="scroller" id="ec-body"></div></div>
+    <div class="capnote" id="ec-cap" style="display:none"></div>
+  </div>
+  <div class="note" id="ec-note"></div>
+</div><!-- /view-ext -->
+
   <div class="footer">Foxtrot Aviation Services Data Department</div>
 </div>
 <div id="tip" role="tooltip"></div>
@@ -283,6 +319,9 @@ let S_MGRS = DATA.managers, S_LOCS = DATA.locations, SCOPED = false;
 
 let rm = ALL, loc = ALL;
 let tab = "training", bview = "cov", covLD = null, bloc = ALL, bstat = ALL, bq = "";
+// External Credentials tab state (parallel to the badge state, ec- prefixed)
+let ecView = "cov", ecLD = null, ecStat = ALL, ecQ = "";
+let ecType = (DATA.extTypes || [])[0] || "Y Number";
 const UNM = "__UNMATCHED__";   // pseudo labor dist: unmatched badge records
 // deep links: #badge/BDG-0012 opens that badge's view with the row highlighted;
 // #renew/BDG-0012 additionally opens the renewal form for that badge
@@ -313,14 +352,21 @@ try{
   if (s.rm === ALL || S_MGRS[s.rm]) rm = s.rm ?? ALL;
   if (s.loc === ALL || S_LOCS.includes(s.loc)) loc = s.loc ?? ALL;
   if (s.tab === "badges") tab = "badges";
+  if (s.tab === "ext") tab = "ext";
   if (s.bview === "termed") bview = "termed";
   if (s.covLD === UNM || DATA.coverage.some(c => c[0] === s.covLD)) covLD = s.covLD;
   if (typeof s.bstat === "string") bstat = s.bstat;
+  if (s.ecView === "de") ecView = "de";
+  if ((DATA.extTypes || []).includes(s.ecType)) ecType = s.ecType;
+  if ((DATA.extReqs || []).some(r => r[0] === s.ecLD)) ecLD = s.ecLD;
+  if (typeof s.ecStat === "string") ecStat = s.ecStat;
 }catch(e){}
 if (DEEP || H0 === "#badges" || H0 === "#coverage") tab = "badges";
 else if (H0 === "#termed" || H0 === "#deactivated") {
   tab = "badges"; bview = "termed";
 }
+else if (H0 === "#credentials") { tab = "ext"; ecView = "cov"; }
+else if (H0 === "#credentials-deactivated") { tab = "ext"; ecView = "de"; }
 else if (H0 === "#training") tab = "training";
 if (DEEP) {   // never let a saved filter or the wrong sub-view hide the linked badge
   bstat = ALL; bq = "";
@@ -334,7 +380,8 @@ if (DEEP) {   // never let a saved filter or the wrong sub-view hide the linked 
   }
 }
 function saveState(){ sessionStorage.setItem("tp-state",
-  JSON.stringify({rm, loc, tab, bview, covLD, bstat})); }
+  JSON.stringify({rm, loc, tab, bview, covLD, bstat,
+                  ecView, ecLD, ecType, ecStat})); }
 
 // reverse map: location -> managers
 const locMgrs = {};
@@ -957,10 +1004,29 @@ function renderBadges(){
 function applyTab(){
   $("#view-training").style.display = tab === "training" ? "" : "none";
   $("#view-badges").style.display = tab === "badges" ? "" : "none";
-  ["training","badges"].forEach(t => {
+  $("#view-ext").style.display = tab === "ext" ? "" : "none";
+  ["training","badges","ext"].forEach(t => {
     $("#tab-" + t).classList.toggle("on", tab === t);
     $("#tab-" + t).setAttribute("aria-selected", tab === t);
   });
+  // External Credentials chrome (parallel to the badge rules below)
+  [["ec-sub-cov","cov"],["ec-sub-de","de"]].forEach(([id, v]) => {
+    $("#" + id).classList.toggle("on", ecView === v);
+    $("#" + id).setAttribute("aria-selected", String(ecView === v));
+  });
+  const ecov = ecView === "cov", edrill = ecov && ecLD;
+  $("#ec-new").style.display = ecov ? "" : "none";
+  $("#ec-back").style.display = edrill ? "" : "none";
+  $("#ec-hint").textContent = edrill
+    ? "Edit or deactivate from a row; the New credential row button pre-fills the employee."
+    : ecov ? "Click a location to see who holds this credential and who is missing it." : "";
+  ["ec-stat","ec-stat-l"].forEach(id =>
+    $("#" + id).style.display = edrill ? "" : "none");
+  $("#ec-title").innerHTML = ecView === "de"
+    ? `Deactivated Credentials <span class="sub">&middot; closed-out external credentials</span>`
+    : edrill
+    ? `${esc(ecLD)} <span class="sub">&middot; ${esc(ecType)} holders and gaps</span>`
+    : `External Credentials <span class="sub">&middot; ${esc(ecType)} coverage by location</span>`;
   [["sub-cov","cov"],["sub-termed","termed"]].forEach(([id, v]) => {
     $("#" + id).classList.toggle("on", bview === v);
     $("#" + id).setAttribute("aria-selected", String(bview === v));
@@ -1454,9 +1520,522 @@ function render(){
   renderChart(sel);
 }
 
+/* ---------- External Credential forms ----------
+ * Same conventions as the badge forms (typed dates, X-only close, strict
+ * validation) but separate payloads: kind "external-credential", posted to
+ * /api/credentials/* . Until the platform enables those endpoints the forms
+ * fall back to preview - exactly how the badge forms launched. */
+function showExtPreview(payload, note){
+  modal.querySelector(".mbody").innerHTML = `
+    <div class="kv2" style="background:#e3f4ea;border-color:#bfe3cd"><b>${note
+      ? "Not saved." : "Preview mode."}</b>
+      ${note || `This is what a save submits. Credential actions will save for
+      platform users once the platform enables credential saves &mdash; open
+      this page from the platform's Training section to submit for real.`}
+      Nothing has been changed.</div>
+    <div class="previewbox">${esc(JSON.stringify(payload, null, 2))}</div>
+    <div class="btnrow"><button class="btn ghost" id="f-close">Close</button></div>`;
+  $("#f-close").onclick = closeModal;
+}
+function submitExtAction(payload){
+  if (!BADGEAUTH) { showExtPreview(payload); return; }
+  const btn = $("#f-save");
+  const btnLabel = btn ? btn.textContent : "";
+  if (btn){ btn.disabled = true; btn.textContent = "Saving…"; }
+  const fail = msg => {
+    if (btn){ btn.disabled = false; btn.textContent = btnLabel; }
+    const e = $("#f-err"); if (e) e.textContent = msg;
+  };
+  fetch(`${BADGEAPI}/api/credentials/${payload.action}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json",
+               "Authorization": "Bearer " + BADGEAUTH },
+    body: JSON.stringify(payload),
+  }).then(async r => {
+    if (r.status === 404 || r.status === 405){
+      // the platform side of credentials is a follow-up (see CLAUDE.md)
+      showExtPreview(payload, `The platform hasn't enabled credential saves
+        yet &mdash; this is the exact record the save will submit once it
+        does.`);
+      return;
+    }
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { fail(d.error || `Save failed (${r.status}).`); return; }
+    modal.querySelector(".mbody").innerHTML = `
+      <div class="kv2" style="background:#e3f4ea;border-color:#bfe3cd">
+        <b>Saved.</b> ${esc(d.credentialId || "")} written to External
+        Credentials.csv. This page still shows the old data until its next
+        rebuild &mdash; one was just requested, so give it a few minutes.</div>
+      <div class="btnrow"><button class="btn ghost" id="f-close">Close</button></div>`;
+    $("#f-close").onclick = closeModal;
+  }).catch(() => fail("Network error — nothing was saved."));
+}
+
+function openNewCred(prefillName, prefillEid, prefillLoc){
+  const types = DATA.extTypes || [];
+  openModal("New External Credential", `
+    ${frow("Employee", `<div style="position:relative">
+      <input id="f-emp" placeholder="start typing a name&hellip;" autocomplete="off">
+      <div id="f-empdd" style="position:absolute;z-index:30;left:0;right:0;
+        background:var(--surface);border:1px solid var(--line);
+        border-radius:0 0 8px 8px;max-height:190px;overflow:auto;display:none;
+        box-shadow:0 8px 20px #0003"></div></div>`)}
+    <div class="kv2" id="f-empinfo" style="display:none"></div>
+    ${frow("Credential Type", `<select id="c-type">${types.map(t =>
+      `<option ${t === ecType ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>`)}
+    ${frow("Location", `<select id="c-loc"></select>`)}
+    <div class="kv2" id="c-reqnote" style="display:none"></div>
+    ${frow("Credential Number", `<input id="c-num" autocomplete="off">`)}
+    <div id="c-row-exp">${frow("Expiration date (MM/DD/YYYY)", `<input id="c-exp"
+      placeholder="MM/DD/YYYY" inputmode="numeric" maxlength="10"
+      autocomplete="off">`)}</div>
+    <div class="ferr" id="f-err"></div>
+    <div class="btnrow"><button class="btn ghost" id="f-cancel">Cancel</button>
+      <button class="btn primary" id="f-save">Create credential</button></div>`);
+  // employee prefix search - same behavior as the badge form (every typed
+  // word must START a name word; candidate refactor to share one picker)
+  const info = $("#f-empinfo"), dd = $("#f-empdd");
+  const syncInfo = () => {
+    const r = EMP[$("#f-emp").value];
+    info.style.display = r ? "" : "none";
+    if (r) info.innerHTML = `Emp ID: <b>${esc(r[0])}</b> &middot;
+      ${esc(r[3]) || "&mdash;"} &middot; home: ${esc(r[2]) || "&mdash;"}`;
+  };
+  const suggest = () => {
+    const q = $("#f-emp").value.trim().toLowerCase();
+    syncInfo();
+    if (!q || EMP[$("#f-emp").value]){ dd.style.display = "none"; return; }
+    const toks = q.split(/\s+/);
+    const hits = DATA.roster.filter(r => {
+      const names = r[1].toLowerCase().split(/\s+/);
+      return toks.every(t => names.some(n => n.startsWith(t)));
+    }).slice(0, 12);
+    dd.innerHTML = hits.length
+      ? hits.map(r => `<div class="ddi" data-v="${esc(r[1])} — ${esc(r[0])}"
+          style="padding:7px 10px;cursor:pointer;font-size:13.5px"><b>${esc(r[1])}</b>
+          <span style="color:var(--muted)">&mdash; ${esc(r[0])} &middot; ${esc(r[2])}</span></div>`).join("")
+      : `<div style="padding:7px 10px;color:var(--muted);font-size:13px">no matching employee</div>`;
+    dd.style.display = "";
+  };
+  $("#f-emp").addEventListener("input", suggest);
+  dd.addEventListener("mousedown", e => {
+    const it = e.target.closest(".ddi");
+    if (!it) return;
+    $("#f-emp").value = it.dataset.v;
+    dd.style.display = "none";
+    syncInfo();
+  });
+  $("#f-emp").addEventListener("blur",
+    () => setTimeout(() => dd.style.display = "none", 150));
+  // type picks the location list; location picks whether expiration exists
+  const syncLoc = () => {
+    const t = $("#c-type").value, l = $("#c-loc").value;
+    $("#c-row-exp").style.display = (l && !extExpires(l, t)) ? "none" : "";
+    const rq = l && reqFor(l, t);
+    $("#c-reqnote").style.display = rq && rq[4] ? "" : "none";
+    if (rq && rq[4]) $("#c-reqnote").textContent = rq[4];
+  };
+  const applyReq = keep => {
+    const t = $("#c-type").value;
+    const locs = reqRows(t).map(r => r[0]).sort();
+    const cur = keep || prefillLoc || ecLD || "";
+    $("#c-loc").innerHTML = `<option value=""
+        ${locs.includes(cur) ? "" : "selected"}>&mdash; pick a location &mdash;</option>`
+      + locs.map(l => `<option ${l === cur ? "selected" : ""}>${esc(l)}</option>`).join("");
+    syncLoc();
+  };
+  $("#c-type").addEventListener("change", () => applyReq());
+  $("#c-loc").addEventListener("change", syncLoc);
+  wireDate("c-exp");
+  applyReq();
+  if (prefillName && prefillEid){
+    $("#f-emp").value = `${prefillName} — ${prefillEid}`;
+    syncInfo();
+  }
+  $("#f-cancel").onclick = closeModal;
+  $("#f-save").onclick = () => {
+    const r = EMP[$("#f-emp").value], err = $("#f-err");
+    if (!r) { err.textContent = "Pick an employee from the list."; return; }
+    const t = $("#c-type").value, l = $("#c-loc").value;
+    if (!l) { err.textContent = "Pick the location."; return; }
+    if (!$("#c-num").value.trim()){
+      err.textContent = "Enter the credential number."; return; }
+    let expIso = "";
+    if (extExpires(l, t)){
+      expIso = parseMDY($("#c-exp").value);
+      if (!expIso){
+        err.textContent = "Enter the expiration date as MM/DD/YYYY."; return; }
+    }
+    submitExtAction({action: "create", kind: "external-credential",
+      credentialType: t, employeeId: r[0], employeeName: r[1], location: l,
+      credentialNumber: $("#c-num").value.trim(), expiration: expIso,
+      requestedAt: new Date().toISOString()});
+  };
+}
+
+// no renewal concept for external credentials (Y numbers don't expire) -
+// Edit corrects a mistyped number, and carries the expiration too at any
+// location whose requirement row tracks one (Clara, 2026-10-09)
+const isoToMDY = s => /^\d{4}-\d{2}-\d{2}$/.test(s || "")
+  ? `${s.slice(5, 7)}/${s.slice(8, 10)}/${s.slice(0, 4)}` : "";
+function openEditCred(cid){
+  const x = extById(cid); if (!x) return;
+  const expTracked = extExpires(x[8], x[4]);
+  openModal("Edit Credential", `
+    <div class="kv2">${esc(x[2])} &middot; Emp ID ${esc(x[1]) || "&mdash;"}<br>
+      ${esc(x[4])} &middot; ${esc(x[8]) || "&mdash;"} &middot;
+      <span class="pill ${PILLC[x[7]] || "unknown"}">${esc(x[7])}</span></div>
+    <div class="kv2">Use this to correct a mistake &mdash; the record keeps
+      what it said before.</div>
+    ${frow("Credential Number", `<input id="c-num" value="${esc(x[5])}"
+      autocomplete="off">`)}
+    ${expTracked ? frow("Expiration date (MM/DD/YYYY)", `<input id="c-exp"
+      value="${isoToMDY(x[6])}" placeholder="MM/DD/YYYY" inputmode="numeric"
+      maxlength="10" autocomplete="off">`) : ""}
+    <div class="ferr" id="f-err"></div>
+    <div class="btnrow"><button class="btn ghost" id="f-cancel">Cancel</button>
+      <button class="btn primary" id="f-save">Save changes</button></div>`);
+  if (expTracked) wireDate("c-exp");
+  $("#f-cancel").onclick = closeModal;
+  $("#f-save").onclick = () => {
+    const err = $("#f-err"), num = $("#c-num").value.trim();
+    if (!num){ err.textContent = "Enter the credential number."; return; }
+    let expIso = "";
+    if (expTracked){
+      expIso = parseMDY($("#c-exp").value);
+      if (!expIso){
+        err.textContent = "Enter the expiration date as MM/DD/YYYY."; return; }
+    }
+    if (num === x[5] && (!expTracked || expIso === x[6])){
+      err.textContent = "Nothing changed."; return; }
+    const payload = {action: "update", kind: "external-credential",
+      credentialId: x[0], credentialType: x[4], employeeId: x[1],
+      employeeName: x[2], location: x[8],
+      newNumber: num, previousNumber: x[5],
+      requestedAt: new Date().toISOString()};
+    if (expTracked){
+      payload.newExpiration = expIso;
+      payload.previousExpiration = x[6];
+    }
+    submitExtAction(payload);
+  };
+}
+
+function openDeactCred(cid){
+  const x = extById(cid); if (!x) return;
+  const REASONS = ["Employee terminated", "Expired / replaced",
+    "No longer required", "Entered in error", "Other"];
+  openModal("Credential Deactivation", `
+    <div class="kv2">${esc(x[2])} &middot; Emp ID ${esc(x[1]) || "&mdash;"}<br>
+      ${esc(x[4])} <b>${esc(x[5]) || "&mdash;"}</b> &middot; ${esc(x[8]) || "&mdash;"}</div>
+    ${frow("Reason", `<select id="c-reason">
+      <option value="" selected>&mdash; pick a reason &mdash;</option>
+      ${REASONS.map(r0 => `<option>${r0}</option>`).join("")}</select>`)}
+    ${frow("Note", `<input id="c-note" autocomplete="off"
+      placeholder="required for Other">`)}
+    <div class="ferr" id="f-err"></div>
+    <div class="btnrow"><button class="btn ghost" id="f-cancel">Cancel</button>
+      <button class="btn danger" id="f-save">Deactivate credential</button></div>`);
+  $("#f-cancel").onclick = closeModal;
+  $("#f-save").onclick = () => {
+    const reason = $("#c-reason").value, note = $("#c-note").value.trim();
+    const err = $("#f-err");
+    if (!reason) { err.textContent = "Pick the reason."; return; }
+    if (reason === "Other" && !note){
+      err.textContent = "A note is required for Other."; return; }
+    const now = new Date();
+    const deactivatedDate = `${now.getFullYear()}-${String(now.getMonth() + 1)
+      .padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    submitExtAction({action: "deactivate", kind: "external-credential",
+      credentialId: x[0], credentialType: x[4], employeeId: x[1],
+      employeeName: x[2], credentialNumber: x[5], location: x[8],
+      reason, note, deactivatedDate, requestedAt: now.toISOString()});
+  };
+}
+
+/* ---------- External Credentials tab ----------
+ * Airport-issued credentials that are NOT badges and never link to badges
+ * (Y numbers today; the Requirements table makes new types data-only).
+ * Deliberately parallel to the badge tab: same statuses, same employee
+ * join, same form conventions - but a separate data model end to end. */
+const EXTS = DATA.externals || [], EXTREQ = DATA.extReqs || [];
+const TERMG = ["Terminated", "Retired", "Deceased"];
+const extById = id => EXTS.find(x => x[0] === id);
+const extLive = x => x[7] !== "Deactivated";
+const reqRows = type => EXTREQ.filter(r => r[1] === type
+  && r[2].toLowerCase() !== "no");
+const reqFor = (locv, type) => EXTREQ.find(r => r[0] === locv && r[1] === type);
+const extExpires = (locv, type) =>
+  ((reqFor(locv, type) || [])[3] || "Yes").toLowerCase() !== "no";
+const ECRPILL = {"Employee terminated": "termed", "No longer required": "notbadged",
+  "Expired / replaced": "unknown", "Entered in error": "unknown", "Other": "unknown"};
+const eidKey = v => String(v || "").replace(/\D/g, "");
+
+function renderExtControls(){
+  const types = DATA.extTypes || [];
+  $("#ec-type").innerHTML = types.map(t =>
+    `<option ${t === ecType ? "selected" : ""}>${esc(t)}</option>`).join("");
+  $("#ec-stat").innerHTML =
+    `<option value="${ALL}" ${ecStat===ALL?"selected":""}>All statuses</option>` +
+    ["Active","Expiring","Expired","Unknown","Missing"].map(s =>
+      `<option ${s===ecStat?"selected":""}>${s}</option>`).join("");
+  if (DATA.extAlerts && DATA.extAlerts.length)
+    $("#ec-sub-de").innerHTML =
+      `Deactivated <span class="pill expired">${DATA.extAlerts.length}</span>`;
+}
+
+function renderExt(){
+  if (ecView === "de") return renderExtDeactivated();
+  $("#ec-alerts").style.display = "none";
+  if (!reqRows(ecType).length){
+    // not configured yet: the tab explains how to turn itself on
+    $("#ec-kpis").innerHTML = ""; $("#ec-req").style.display = "none";
+    $("#ec-hd").innerHTML = `${esc(ecType)} <span class="sub">not configured yet</span>`;
+    $("#ec-body").innerHTML = `<div style="padding:16px;color:var(--muted);max-width:70ch">
+      No locations are configured for <b>${esc(ecType)}</b> yet. Add one row per
+      location to <b>External Credential Requirements.csv</b> in Definitive Lists
+      (columns: Location, Credential Type, Required, Expires, Notes) and the
+      coverage list, forms, and statuses switch on at the next refresh &mdash;
+      no code changes.</div>`;
+    $("#ec-cap").style.display = "none"; $("#ec-note").innerHTML = "";
+    return;
+  }
+  if (ecLD) return renderExtDrill();
+  $("#ec-req").style.display = "none";
+  const q = ecQ.trim().toLowerCase();
+  const locs = reqRows(ecType).map(r => r[0]).sort()
+    .filter(l => !q || l.toLowerCase().includes(q));
+  const perLoc = locs.map(l => {
+    const emps = DATA.employees.filter(e => e[2] === l);
+    const filed = EXTS.filter(x => extLive(x) && !TERMG.includes(x[10])
+      && x[8] === l && x[4] === ecType);
+    const holders = new Set(filed.map(x => eidKey(x[1])).filter(Boolean));
+    const have = emps.filter(e => holders.has(e[0])).length;
+    const n = st => filed.filter(x => x[7] === st).length;
+    return {l, emps: emps.length, have, filed: filed.length,
+            a: n("Active"), x: n("Expiring"), d: n("Expired")};
+  });
+  const tot = k => perLoc.reduce((s, r) => s + r[k], 0);
+  $("#ec-kpis").innerHTML =
+    covTile("Locations", perLoc.length, "", `require ${esc(ecType)}`) +
+    covTile("Employees there", tot("emps").toLocaleString(), "", "current employees") +
+    covTile("Have it", tot("have").toLocaleString(), "pos", "hold a live " + esc(ecType)) +
+    covTile("Missing", tot("emps") - tot("have"),
+      (tot("emps") - tot("have")) ? "neg" : "pos", "employees without one") +
+    covTile("Expiring soon", tot("x"), tot("x") ? "neg" : "pos",
+      "within " + DATA.badgeSoonDays + " days") +
+    covTile("Expired", tot("d"), tot("d") ? "neg" : "pos", "past their date");
+  $("#ec-hd").innerHTML = `${esc(ecType)} coverage
+    <span class="sub">${perLoc.length} location${perLoc.length===1?"":"s"}
+    &middot; click a row to open its people and credentials</span>`;
+  const head = `<div class="grow hrow"><div class="cell">Location</div>
+    <div class="cell num">Employees</div><div class="cell num">Have it</div>
+    <div class="cell num">Missing</div><div class="cell num">Credentials</div>
+    <div class="cell num">Active</div><div class="cell num">Expiring</div>
+    <div class="cell num">Expired</div></div>`;
+  const num = (v, color) => `<div class="cell num"${color
+    ? ` style="color:${color};font-weight:700"` : ""}>${v}</div>`;
+  const body = perLoc.map((r, i) => `<div class="grow covrow ${i%2?"oddrow":""}"
+      data-ecld="${esc(r.l)}">
+    <div class="cell" style="font-weight:600">${esc(r.l)} &rsaquo;</div>
+    <div class="cell num">${r.emps}</div>
+    <div class="cell num">${r.have}</div>
+    ${num(r.emps - r.have, (r.emps - r.have) ? "var(--bad)" : "")}
+    <div class="cell num">${r.filed}</div>
+    <div class="cell num">${r.a}</div>
+    ${num(r.x, r.x ? "#b45309" : "")}
+    ${num(r.d, r.d ? "var(--bad)" : "")}
+  </div>`).join("");
+  $("#ec-body").innerHTML = perLoc.length
+    ? `<div class="grid" style="min-width:880px;grid-template-columns:
+        minmax(180px,1.8fr) 100px 86px 86px 110px 76px 80px 76px">${head}${body}</div>`
+    : `<div style="padding:14px;color:var(--muted)">No locations match.</div>`;
+  $("#ec-cap").style.display = "none";
+  $("#ec-note").innerHTML = `<p><b>${esc(ecType)}</b> is an external credential
+    &mdash; issued by the airport or authority, tracked separately from badges
+    and never linked to them. <b>Have it</b> = the employee holds a live
+    ${esc(ecType)} filed at this location, matched by Employee ID. Which
+    locations appear here is owner-configured in
+    <b>External Credential Requirements.csv</b>. Credential data as of
+    <b>${esc(DATA.externalsAsof)}</b>.</p>`;
+}
+
+function renderExtDrill(){
+  const rq = reqFor(ecLD, ecType);
+  const sp = $("#ec-req");
+  sp.style.display = "";
+  sp.innerHTML = `<b>${esc(ecType)}</b> required at <b>${esc(ecLD)}</b>`
+    + (extExpires(ecLD, ecType) ? ` &middot; expires (tracked, ${DATA.badgeSoonDays}-day
+        warning)` : ` &middot; does not expire at this location`)
+    + (rq && rq[4] ? `<div style="margin-top:4px;font-style:italic;
+        color:var(--muted)">Note: ${esc(rq[4])}</div>` : "");
+  const emps = DATA.employees.filter(e => e[2] === ecLD);
+  const liveType = EXTS.filter(x => extLive(x) && !TERMG.includes(x[10])
+    && x[4] === ecType);
+  const all = [];
+  liveType.filter(x => x[8] === ecLD).forEach(x =>
+    all.push({x, e: DATA.employees.find(e => e[0] === eidKey(x[1])) || null}));
+  const byEid = {};
+  liveType.forEach(x => {
+    const k = eidKey(x[1]);
+    if (k) (byEid[k] = byEid[k] || []).push(x);
+  });
+  emps.forEach(e => {
+    const xs = byEid[e[0]] || [];
+    if (!xs.length) all.push({x: null, e});
+    else if (!xs.some(x => x[8] === ecLD))
+      all.push({x: null, e, away: [...new Set(xs.map(x => x[8] || "?"))]});
+  });
+  const stat = r => r.x ? r.x[7] : (r.away ? "Held elsewhere" : "Missing");
+  const cnt = st => all.filter(r => stat(r) === st).length;
+  $("#ec-kpis").innerHTML =
+    covTile("Employees", emps.length, "", esc(ecLD)) +
+    covTile("Credentials here", all.filter(r => r.x).length, "", "filed to this location") +
+    covTile("Active", cnt("Active"), "pos", extExpires(ecLD, ecType)
+      ? "more than " + DATA.badgeSoonDays + " days left" : "non-expiring") +
+    covTile("Expiring soon", cnt("Expiring"), cnt("Expiring") ? "neg" : "pos",
+      "within " + DATA.badgeSoonDays + " days") +
+    covTile("Expired", cnt("Expired"), cnt("Expired") ? "neg" : "pos", "past their date") +
+    covTile("Missing", cnt("Missing"), cnt("Missing") ? "neg" : "pos",
+      "no live " + esc(ecType) + " anywhere");
+  const q = ecQ.trim().toLowerCase();
+  let rows = all.filter(r => {
+    if (ecStat !== ALL && stat(r) !== ecStat) return false;
+    if (!q) return true;
+    const hay = r.x ? [r.x[0], r.x[1], r.x[2], r.x[5]] : [r.e[0], r.e[1]];
+    return hay.some(v => String(v).toLowerCase().includes(q));
+  });
+  const ord = {Expired: 0, Expiring: 1, Unknown: 2, Active: 3, Missing: 4};
+  rows.sort((a, b) => (ord[stat(a)] ?? 9) - (ord[stat(b)] ?? 9)
+    || (a.x ? a.x[2] : a.e[1]).localeCompare(b.x ? b.x[2] : b.e[1]));
+  $("#ec-hd").innerHTML = `People &amp; credentials
+    <span class="sub">${rows.length.toLocaleString()} row${rows.length===1?"":"s"}
+    &middot; sorted most urgent first</span>`;
+  // non-expiring locations don't show an Expires column at all
+  const showExp = extExpires(ecLD, ecType);
+  const cols = ["Emp ID","Employee","Position","Number"]
+    .concat(showExp ? ["Expires"] : []).concat(["Status","Based at","Actions"]);
+  const head = `<div class="grow hrow">${cols.map(c =>
+    `<div class="cell">${c}</div>`).join("")}</div>`;
+  const shown = rows.slice(0, ROWCAP);
+  const body = shown.map((r, i) => {
+    const x = r.x, e = r.e;
+    const acts = x
+      ? `<span class="rowact"><button data-eact="edit" data-cid="${esc(x[0])}">Edit</button>` +
+        `<button class="danger" data-eact="deact" data-cid="${esc(x[0])}">Deact.</button></span>`
+      : r.away ? "&mdash;"
+      : `<span class="rowact"><button data-eact="newfor" data-eid="${esc(e[0])}"
+          data-name="${esc(e[1])}">&#65291; New credential</button></span>`;
+    const visitor = x && x[9] && x[9] !== ecLD;
+    const basedCell = !x ? "&mdash;"
+      : visitor ? `<span style="color:var(--orange);font-weight:700"
+          title="held by someone based at another location - the credential
+          belongs to this one">&#9992;&#65039; ${esc(x[9])}</span>`
+      : esc(x[9]) || "&mdash;";
+    const statCell = r.away
+      ? `<span style="font-size:12px;color:var(--muted)" title="holds a live
+          ${esc(ecType)} filed at another location">&#9992;&#65039; at
+          ${esc(r.away.join(", "))}</span>`
+      : `<span class="pill ${PILLC[stat(r)] || (stat(r) === "Missing"
+          ? "notbadged" : "unknown")}">${esc(stat(r))}</span>`;
+    return `<div class="grow ${i%2?"oddrow":""}">
+    <div class="cell">${esc(x ? x[1] : e[0]) || "&mdash;"}</div>
+    <div class="cell" style="font-weight:600">${esc(x ? x[2] : e[1])}</div>
+    <div class="cell">${esc(x ? x[3] : e[3]) || "&mdash;"}</div>
+    <div class="cell">${x ? esc(x[5]) || "&mdash;" : "&mdash;"}</div>
+    ${showExp ? `<div class="cell">${x ? bfmt(x[6]) : "&mdash;"}</div>` : ""}
+    <div class="cell">${statCell}</div>
+    <div class="cell">${basedCell}</div>
+    <div class="cell">${acts}</div></div>`; }).join("");
+  $("#ec-body").innerHTML = rows.length
+    ? `<div class="grid" style="min-width:${showExp ? 960 : 900}px;grid-template-columns:
+        80px minmax(150px,1.5fr) minmax(110px,1.1fr) minmax(110px,1.1fr)
+        ${showExp ? "82px " : ""}128px 100px 170px">${head}${body}</div>`
+    : `<div style="padding:14px;color:var(--muted)">No rows match this filter.</div>`;
+  const cap = $("#ec-cap");
+  cap.style.display = rows.length > ROWCAP ? "" : "none";
+  if (rows.length > ROWCAP) cap.textContent =
+    `Showing the first ${ROWCAP} of ${rows.length.toLocaleString()} rows — narrow the filter.`;
+  $("#ec-note").innerHTML = `<p><b>Missing</b> = a ${esc(ecLD)} employee with no
+    live ${esc(ecType)} anywhere &mdash; the row button opens the form with the
+    employee pre-filled. A &#9992;&#65039; row holds one filed at another
+    location. Statuses recompute at every nightly refresh.</p>`;
+}
+
+function renderExtDeactivated(){
+  $("#ec-req").style.display = "none";
+  // needs-attention box: terminated holders whose credential is still open -
+  // it should be cancelled with the issuer and closed out here
+  const al = DATA.extAlerts || [];
+  const box = $("#ec-alerts");
+  if (al.length){
+    box.style.display = "";
+    box.querySelector(".hd").innerHTML = `&#9888;&#65039; Open credentials of
+      terminated employees <span class="sub">${al.length} to cancel with the
+      issuer &middot; contact = labor-distribution manager</span>`;
+    $("#ec-alertbody").innerHTML = `<div class="grid" style="min-width:960px;
+      grid-template-columns:minmax(150px,1.4fr) minmax(110px,1fr) minmax(90px,.9fr)
+      90px minmax(100px,1fr) minmax(160px,1.5fr) 110px">
+      <div class="grow hrow"><div class="cell">Employee</div><div class="cell">Number</div>
+      <div class="cell">Type</div><div class="cell">Location</div>
+      <div class="cell">Labor Dist</div><div class="cell">Contact</div>
+      <div class="cell">Action</div></div>` +
+      al.map((a, i) => `<div class="grow ${i%2?"oddrow":""}">
+        <div class="cell" style="font-weight:600">${esc(a[1])}</div>
+        <div class="cell">${esc(a[2]) || "&mdash;"}</div>
+        <div class="cell">${esc(a[3]) || "&mdash;"}</div>
+        <div class="cell">${esc(a[4]) || "&mdash;"}</div>
+        <div class="cell">${esc(a[5]) || "&mdash;"}</div>
+        <div class="cell" title="${esc(a[6])}">${esc(a[6]) || "&mdash;"}</div>
+        <div class="cell"><span class="rowact"><button class="danger"
+          data-eact="deact" data-cid="${esc(a[0])}">Deactivate</button></span></div>
+      </div>`).join("") + `</div>`;
+  } else box.style.display = "none";
+  const q = ecQ.trim().toLowerCase();
+  const rows = EXTS.filter(x => x[7] === "Deactivated" && x[4] === ecType
+    && (!q || [x[0], x[1], x[2], x[5]].some(v =>
+         String(v).toLowerCase().includes(q))));
+  $("#ec-kpis").innerHTML =
+    covTile("Deactivated", rows.length.toLocaleString(), "", esc(ecType)) +
+    covTile("Employee terminated",
+      rows.filter(x => x[12] === "Employee terminated").length, "",
+      "closed on termination") +
+    covTile("Other reasons",
+      rows.filter(x => x[12] !== "Employee terminated").length, "",
+      "replaced, no longer required&hellip;");
+  $("#ec-hd").innerHTML = `Deactivated credentials
+    <span class="sub">${rows.length.toLocaleString()}
+    row${rows.length===1?"":"s"} &middot; ${esc(ecType)}</span>`;
+  const head = `<div class="grow hrow"><div class="cell">Emp ID</div>
+    <div class="cell">Employee</div><div class="cell">Emp status</div>
+    <div class="cell">Number</div><div class="cell">Reason</div>
+    <div class="cell">Deactivated</div><div class="cell">Location</div></div>`;
+  const body = rows.map((x, i) => `<div class="grow ${i%2?"oddrow":""}">
+    <div class="cell">${esc(x[1]) || "&mdash;"}</div>
+    <div class="cell" style="font-weight:600">${esc(x[2])}</div>
+    <div class="cell">${esc(x[10])}</div>
+    <div class="cell">${esc(x[5]) || "&mdash;"}</div>
+    <div class="cell">${x[12] ? `<span class="pill ${ECRPILL[x[12]] || "unknown"}"
+      title="${esc(x[12])}">${esc(x[12])}</span>` : "&mdash;"}</div>
+    <div class="cell">${bfmt(x[11])}</div>
+    <div class="cell">${esc(x[8]) || "&mdash;"}</div></div>`).join("");
+  $("#ec-body").innerHTML = rows.length
+    ? `<div class="grid" style="min-width:920px;grid-template-columns:
+        80px minmax(150px,1.5fr) 96px minmax(110px,1.1fr) minmax(140px,1.3fr)
+        92px minmax(100px,1fr)">${head}${body}</div>`
+    : `<div style="padding:14px;color:var(--muted)">No deactivated
+       ${esc(ecType)} records.</div>`;
+  $("#ec-cap").style.display = "none";
+  $("#ec-note").innerHTML = `<p>Deactivation closes a credential with a reason
+    and keeps the row forever &mdash; nothing is deleted. A terminated
+    employee's still-open credential stays in the box above until it is
+    deactivated here.</p>`;
+}
+
 $("#gen").textContent = DATA.asof;
 renderControls(); render();
-renderBadgeControls(); renderBadges(); applyTab();
+renderBadgeControls(); renderBadges();
+renderExtControls(); renderExt(); applyTab();
 if (DEEP){
   const el = document.getElementById("bdg-" + DEEP);
   if (el) el.scrollIntoView({block: "center"});
@@ -1476,10 +2055,13 @@ window.addEventListener("hashchange", () => {
   const h0 = location.hash.split("&")[0];
   if (h0 === "#badges" || h0 === "#coverage") { tab = "badges"; }
   else if (h0 === "#deactivated" || h0 === "#termed") { tab = "badges"; bview = "termed"; }
+  else if (h0 === "#credentials") { tab = "ext"; ecView = "cov"; }
+  else if (h0 === "#credentials-deactivated") { tab = "ext"; ecView = "de"; }
   else if (h0 === "#training") { tab = "training"; }
   else return;                       // deep links etc. keep load-time behavior
   saveState(); applyTab();
   if (tab === "badges") renderBadges();
+  if (tab === "ext") renderExt();
 });
 $("#tab-training").addEventListener("click", () => {
   tab = "training"; setHash("#training"); saveState(); applyTab();
@@ -1523,6 +2105,51 @@ $("#bbody").addEventListener("click", e => {
 $("#balertbody").addEventListener("click", e => {
   const btn = e.target.closest("button[data-act='deact']");
   if (btn) openDeactivate(btn.dataset.bid);
+});
+
+/* ---------- External Credentials wiring ---------- */
+$("#tab-ext").addEventListener("click", () => {
+  tab = "ext"; setHash(ecView === "de" ? "#credentials-deactivated" : "#credentials");
+  saveState(); applyTab(); renderExt();
+});
+$("#ec-sub-cov").addEventListener("click", () => {
+  ecView = "cov"; setHash("#credentials");
+  saveState(); applyTab(); renderExt();
+});
+$("#ec-sub-de").addEventListener("click", () => {
+  ecView = "de"; setHash("#credentials-deactivated");
+  saveState(); applyTab(); renderExt();
+});
+$("#ec-back").addEventListener("click", () => {
+  ecLD = null; saveState(); applyTab(); renderExt();
+});
+$("#ec-type").addEventListener("change", e => {
+  ecType = e.target.value; ecLD = null;   // a type change resets the drill
+  saveState(); applyTab(); renderExt();
+});
+$("#ec-stat").addEventListener("change", e => {
+  ecStat = e.target.value; saveState(); renderExt();
+});
+$("#ec-q").addEventListener("input", e => { ecQ = e.target.value; renderExt(); });
+$("#ec-new").addEventListener("click", () => openNewCred(undefined, undefined, ecLD));
+$("#ec-body").addEventListener("click", e => {
+  const btn = e.target.closest("button[data-eact]");
+  if (btn){
+    if (btn.dataset.eact === "edit") openEditCred(btn.dataset.cid);
+    else if (btn.dataset.eact === "newfor")
+      openNewCred(btn.dataset.name, btn.dataset.eid, ecLD);
+    else openDeactCred(btn.dataset.cid);
+    return;
+  }
+  const rr = e.target.closest(".grow[data-ecld]");
+  if (rr && ecView === "cov" && !ecLD){
+    ecLD = rr.dataset.ecld;
+    saveState(); applyTab(); renderExt();
+  }
+});
+$("#ec-alertbody").addEventListener("click", e => {
+  const btn = e.target.closest("button[data-eact='deact']");
+  if (btn) openDeactCred(btn.dataset.cid);
 });
 
 // Reload every 30 minutes so an open tab can never show stale data
