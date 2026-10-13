@@ -1805,8 +1805,22 @@ function renderExt(){
   if (ecLD) return renderExtDrill();
   $("#ec-req").style.display = "none";
   const q = ecQ.trim().toLowerCase();
+  // Honor the search box's promise ("name, ID, credential number"): a location
+  // shows when its own name matches OR it holds a live credential / has an
+  // employee whose name, employee id, or credential number matches — so a
+  // name/number search surfaces the location(s) to drill into, not just
+  // location-name matches (terminated holders live in the Deactivated view,
+  // which searches the same fields).
+  const credHit = x => [x[1], x[2], x[5]]
+    .some(v => String(v || "").toLowerCase().includes(q));
+  const empHit = e => [e[0], e[1]]
+    .some(v => String(v || "").toLowerCase().includes(q));
+  const locHit = l => l.toLowerCase().includes(q)
+    || EXTS.some(x => x[8] === l && x[4] === ecType && extLive(x)
+         && !TERMG.includes(x[10]) && credHit(x))
+    || DATA.employees.some(e => e[2] === l && empHit(e));
   const locs = reqRows(ecType).map(r => r[0]).sort()
-    .filter(l => !q || l.toLowerCase().includes(q));
+    .filter(l => !q || locHit(l));
   const perLoc = locs.map(l => {
     const emps = DATA.employees.filter(e => e[2] === l);
     const filed = EXTS.filter(x => extLive(x) && !TERMG.includes(x[10])
