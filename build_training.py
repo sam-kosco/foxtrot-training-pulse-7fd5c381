@@ -709,7 +709,13 @@ def main():
             es, labor, position, cname = basic_emp[nid]
         if stored == "Deactivated":
             status = "Deactivated"
-        elif ext_expires.get((xloc, xtype), "Yes").lower() == "no":
+        elif (xloc, xtype) not in ext_expires:
+            # no requirement row configured for this location+type yet — we
+            # don't track expiration until the owner adds the row, so treat
+            # as Active rather than parsing a blank date into a spurious
+            # "Unknown" (e.g. a credential loaded before its Requirements row)
+            status = "Active"
+        elif ext_expires[(xloc, xtype)].lower() == "no":
             status = "Active"          # non-expiring credential type here
         else:
             try:

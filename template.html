@@ -1769,7 +1769,9 @@ const extExpires = (locv, type) =>
   ((reqFor(locv, type) || [])[3] || "Yes").toLowerCase() !== "no";
 const ECRPILL = {"Employee terminated": "termed", "No longer required": "notbadged",
   "Expired / replaced": "unknown", "Entered in error": "unknown", "Other": "unknown"};
-const eidKey = v => String(v || "").replace(/\D/g, "");
+// Mirror the build's norm_eid (strip non-digits AND leading zeros) so the
+// holder match lines up with DATA.employees ids, which are norm_eid-keyed.
+const eidKey = v => String(v || "").replace(/\D/g, "").replace(/^0+/, "");
 
 function renderExtControls(){
   const types = DATA.extTypes || [];
