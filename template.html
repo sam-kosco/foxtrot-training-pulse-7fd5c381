@@ -634,7 +634,21 @@ function renderCoverage(){
   $("#bspec").style.display = "none";
   const stats = ldBadgeStats();
   const q = bq.trim().toLowerCase();
-  const rows = DATA.coverage.filter(c => !q || c[0].toLowerCase().includes(q));
+  // Honor the search box ("name, ID, badge number"): a folder shows when its
+  // name matches OR it holds a live badge / has an employee whose name, id, or
+  // badge number matches — so a name/number search surfaces the folder(s) to
+  // drill into, not just folder-name matches (termed badges live under the
+  // Deactivated view, which searches the same fields).
+  const bHit = b => [b[1], b[2], b[4]]
+    .some(v => String(v || "").toLowerCase().includes(q));
+  const eHit = e => [e[0], e[1]]
+    .some(v => String(v || "").toLowerCase().includes(q));
+  const covHit = ld => ld.toLowerCase().includes(q)
+    || DATA.badges.some(b => b[11] !== "Unmatched"
+         && (b[9] || "(no location)") === ld
+         && !isTermRow(b) && b[7] !== "Not Badged" && bHit(b))
+    || DATA.employees.some(e => e[2] === ld && eHit(e));
+  const rows = DATA.coverage.filter(c => !q || covHit(c[0]));
   const totE = rows.reduce((s, c) => s + c[1], 0);
   const totB = rows.reduce((s, c) => s + c[2], 0);
   const pct = e => e[1] ? Math.round(100 * e[2] / e[1]) : 0;
@@ -673,7 +687,9 @@ function renderCoverage(){
       ? `<span class="pill ${covPill(pct(c))}">${pct(c)}%</span>` : "&mdash;"}</div>
   </div>`; }).join("");
   const unmN = (stats[UNM] || {}).t || 0;
-  if (unmN && !q) body += `<div class="grow covrow" data-ld="${UNM}">
+  const unmHit = !!q && DATA.badges.some(b => b[11] === "Unmatched"
+    && !isTermRow(b) && bHit(b));
+  if (unmN && (!q || unmHit)) body += `<div class="grow covrow" data-ld="${UNM}">
     <div class="cell" style="font-weight:600;color:var(--bad)">&#9888;&#65039; Unmatched
       records &rsaquo;</div>
     <div class="cell num">&mdash;</div><div class="cell num">&mdash;</div>
