@@ -32,6 +32,8 @@ FILES = [
     "Definitive Lists/Terminated Employees.csv",
     "Definitive Lists/Badge Specifications.csv",
     "Definitive Lists/Early Terminations.csv",
+    "Definitive Lists/External Credentials.csv",
+    "Definitive Lists/External Credential Requirements.csv",
 ]
 
 OUT = Path(__file__).parent / "sources"

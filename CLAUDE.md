@@ -132,6 +132,49 @@ two top tabs — Training | Badges — with Active/Terminated sub-views inside B
 - **Deep links:** `#badge/<id>` highlights a row; `#renew/<id>` opens that badge's
   renewal form (target for alert emails).
 
+## External Credentials (third tab)
+
+Airport/authority-issued credentials that are NOT badges and never link to
+badges (Y numbers first; built to take more types - e.g. Respirator
+Certification - as data only). Owner: Clara Lana.
+
+- **Data model (separate from badges):** `Definitive Lists/External
+  Credentials.csv` - one row per credential (Credential ID `EXT-nnnn`,
+  Employee ID, Employee Name, Credential Type, Location, Credential Number,
+  Expiration Date ISO, Status, Deactivated Date, Deactivation Reason, Notes).
+  `Definitive Lists/External Credential Requirements.csv` - the owner-editable
+  control table: one row per (Location, Credential Type) with Required,
+  Expires (No = no expiration tracking there; the form hides the date),
+  Notes (shown on the drill-down strip). Adding a location OR an entirely
+  new credential type = adding rows, no code changes; a type with no rows
+  renders an onboarding message explaining exactly that.
+- **Employee join, names, statuses:** identical rules to badges (ID join
+  Current -> Terminated -> Basic, early-terms treated as terminated,
+  display-name standardization, Active/Expiring(30d)/Expired recomputed
+  nightly, stored `Deactivated` kept). Credentials file by credential
+  LOCATION; a holder based elsewhere gets the plane marker.
+- **Views:** Coverage (per-location: employees / have it / missing /
+  credential status counts; drill-down lists holders with Edit + Deact.
+  and missing employees with a prefilled New credential action; the
+  Expires column renders only where the requirement row tracks one) and
+  Deactivated (closed ledger, reason-as-pill; terminated holders' still-open
+  credentials appear ONLY in the needs-attention box above it, with a
+  Deactivate action - they must be cancelled with the issuer).
+- **Forms/saves:** same conventions as badges (typed MM/DD/YYYY, X-only
+  close, strict validation). There is NO renewal action - Edit (action
+  `update`) corrects a mistyped number (and the expiration where tracked),
+  always carrying previousNumber/previousExpiration for the audit trail;
+  Y numbers themselves never expire (Requirements rows say Expires: No).
+  Payloads carry `kind: "external-credential"`
+  and POST to `${BADGEAPI}/api/credentials/<action>` with the same
+  platform-minted token; until the platform enables those endpoints the
+  forms fall back to preview (a 404/405 shows the would-be record, saves
+  nothing). PLATFORM FOLLOW-UPS: `/api/credentials/*` endpoints +
+  permission entry, feeds.json rows for the two CSVs, digest integration
+  (credential alerts are computed as `extAlerts` but not yet added to
+  `alertsFeed`).
+- Hash routes: `#credentials` (Coverage) and `#credentials-deactivated`.
+
 ## Local development
 
 `python build_training.py` reads the synced Data Hub folder directly. Open `index.html` — no server needed.

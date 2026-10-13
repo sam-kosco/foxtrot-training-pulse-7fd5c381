@@ -44,6 +44,11 @@ SOURCES = {
     "current": r"Definitive Lists\Current Employees.csv",
     "termedcsv": r"Definitive Lists\Terminated Employees.csv",
     "specs": r"Definitive Lists\Badge Specifications.csv",
+    # External credentials (NOT badges): airport-issued credentials like
+    # Y numbers; which locations require which type is owner-editable in
+    # the Requirements file, mirroring the Badge Specifications pattern.
+    "externals": r"Definitive Lists\External Credentials.csv",
+    "extreqs": r"Definitive Lists\External Credential Requirements.csv",
     # Early terminations (core repo's roster job): people termed via the
     # Termination Form whom Paylocity still shows Active until the pay
     # cycle closes — excluded from every count so leavers stop dinging
@@ -657,6 +662,98 @@ def main():
     roster_min.sort(key=lambda x: x[1].lower())
     print(f"roster picker: {len(roster_min)} active employees")
 
+    # ---- External Credentials (the External Credentials tab): credentials
+    #      issued by airports/authorities that are NOT badges and are not
+    #      linked to badges (Y numbers today; designed for more types later,
+    #      e.g. Respirator Certification). One row per credential in External
+    #      Credentials.csv; WHICH locations require WHICH credential type is
+    #      the owner-editable External Credential Requirements.csv (adding a
+    #      location or a whole new credential type = adding rows, no code).
+    ext_reqs = []          # [location, type, required, expires, notes]
+    for r in read_csv("extreqs", missing_ok=True):
+        eloc = r.get("Location", "").strip()
+        ety = r.get("Credential Type", "").strip()
+        if eloc and ety:
+            ext_reqs.append([eloc, ety,
+                             r.get("Required", "").strip() or "Yes",
+                             r.get("Expires", "").strip() or "Yes",
+                             r.get("Notes", "").strip()])
+    # expires flag per (location, type): "No" = the credential never expires
+    # there (status is simply Active) and the form hides the date field
+    ext_expires = {(l, t): (ex or "Yes") for l, t, _rq, ex, _n in ext_reqs}
+
+    ext_rows, ext_alerts = [], []
+    for r in read_csv("externals", missing_ok=True):
+        xname = fix_display_name(r.get("Employee Name", "").strip())
+        xnum = r.get("Credential Number", "").strip()
+        if not (xname or xnum):
+            continue
+        xloc = r.get("Location", "").strip()
+        xtype = r.get("Credential Type", "").strip()
+        stored = r.get("Status", "").strip()
+        xexp = r.get("Expiration Date", "").strip()
+        # same employee join as badges: canonical name / labor dist /
+        # position by normalized Employee ID; unmatched is kept and labeled
+        nid = norm_eid(r.get("Employee ID", ""))
+        shown_eid = r.get("Employee ID", "").strip()
+        es, labor, position, cname = "Unmatched", "", "", ""
+        if nid and nid in et_ids and nid in cur_emp:
+            _st, labor, position, cname = cur_emp[nid]
+            es = "Terminated"          # early-termed: treat as terminated
+        elif nid and nid in cur_emp:
+            es, labor, position, cname = cur_emp[nid]
+        elif nid and nid in term_emp:
+            es = "Terminated"
+            labor, position, cname = term_emp[nid]
+        elif nid and nid in basic_emp:
+            es, labor, position, cname = basic_emp[nid]
+        if stored == "Deactivated":
+            status = "Deactivated"
+        elif (xloc, xtype) not in ext_expires:
+            # no requirement row configured for this location+type yet — we
+            # don't track expiration until the owner adds the row, so treat
+            # as Active rather than parsing a blank date into a spurious
+            # "Unknown" (e.g. a credential loaded before its Requirements row)
+            status = "Active"
+        elif ext_expires[(xloc, xtype)].lower() == "no":
+            status = "Active"          # non-expiring credential type here
+        else:
+            try:
+                d = datetime.strptime(xexp, "%Y-%m-%d").date()
+                status = ("Expired" if d < today else
+                          "Expiring" if (d - today).days <= BADGE_SOON_DAYS
+                          else "Active")
+            except ValueError:
+                status = "Unknown"
+        ext_rows.append([
+            r.get("Credential ID", "").strip(),     # [0]
+            shown_eid,                               # [1]
+            cname or xname,                          # [2]
+            position,                                # [3]
+            xtype,                                   # [4]
+            xnum,                                    # [5]
+            xexp,                                    # [6]
+            status,                                  # [7]
+            xloc,                                    # [8]
+            labor,                                   # [9] holder's labor dist
+            es,                                      # [10] employee status
+            r.get("Deactivated Date", "").strip(),   # [11]
+            r.get("Deactivation Reason", "").strip(),  # [12]
+        ])
+        # a terminated holder's still-open credential needs cancelling with
+        # the issuer - surfaced in the tab's needs-attention box (not yet in
+        # the email alertsFeed; digest integration is a follow-up with Sam)
+        if es in TERM_GROUP and status != "Deactivated":
+            ext_alerts.append([ext_rows[-1][0], cname or xname, xnum, xtype,
+                               xloc, labor,
+                               "; ".join(loc_mgrs.get(labor, [])), es])
+    # type list drives the tab's type selector; Y Number exists from day one
+    ext_types = sorted({t for _l, t, *_ in ext_reqs}
+                       | {x[4] for x in ext_rows if x[4]} | {"Y Number"})
+    print(f"external credentials: {len(ext_rows)} rows, "
+          f"{len(ext_reqs)} location requirements, types: {ext_types}; "
+          f"{len(ext_alerts)} terminated-holder alerts")
+
     # ---- Freshness: per-source last-refresh times. The header "Data as of"
     #      shows the OLDEST of the data sources — nothing on the page is staler
     #      than that. In CI, sources_meta.json carries SharePoint's true
@@ -712,11 +809,17 @@ def main():
         "badgeLocs": sorted(badge_locs),
         "badgeSoonDays": BADGE_SOON_DAYS,
         "badgesAsof": fresh["badges"],
+        "externals": ext_rows,
+        "extReqs": ext_reqs,
+        "extTypes": ext_types,
+        "extAlerts": ext_alerts,
+        "externalsAsof": fresh.get("externals", "?"),
         "fresh": {"LMS transcript": fresh["lms"],
                   "Safety101 data": fresh["s101"],
                   "S101 qualifications report": fresh["expiring"],
                   "Hire dates": fresh["empinfo"],
-                  "Badge records": fresh["badges"]},
+                  "Badge records": fresh["badges"],
+                  "External credentials": fresh.get("externals", "?")},
     }
 
     payload = json.dumps(data, separators=(",", ":"))
