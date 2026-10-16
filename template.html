@@ -596,6 +596,30 @@ const isTermRow = b => TERMGRP.includes(b[11]) || b[7] === "Termed"
 const bfmt = iso => { const m = /^(\d{4})-(\d\d)-(\d\d)$/.exec(iso);
   return m ? `${m[2]}/${m[3]}/${m[1].slice(2)}` : (iso ? esc(iso) : "&mdash;"); };
 
+/* per-location "last update" (Clara, 2026-10-16): platform saves stamp
+ * Last Updated By/At on the row they touch; the build keeps each location's
+ * newest stamp. Until stamps exist, the newest deactivation date stands in,
+ * marked * - record activity, NOT data freshness (that's "Data as of"). */
+const luFmt = at => {
+  const m = /^(\d{4})-(\d\d)-(\d\d)[T ](\d\d):(\d\d)/.exec(at || "");
+  if (!m) return bfmt(at);
+  let h = +m[4]; const ap = h >= 12 ? "PM" : "AM"; h = h % 12 || 12;
+  return `${m[2]}/${m[3]}/${m[1].slice(2)} at ${h}:${m[5]} ${ap}`;
+};
+const luCell = lu => !lu ? `<div class="cell num" style="color:var(--muted)">&mdash;</div>`
+  : lu[2] === "stamp"
+  ? `<div class="cell num" title="by ${esc(lu[0] || "?")} on ${esc(luFmt(lu[1]))}">
+       ${bfmt(lu[1].slice(0, 10))}</div>`
+  : `<div class="cell num" style="color:var(--muted)" title="latest deactivation
+       on record - platform saves will stamp who and when">${bfmt(lu[1])}*</div>`;
+const luNote = (lu, what) => `<div style="margin-top:6px;font-size:12.5px;
+    color:var(--muted)">` + (!lu
+  ? `No ${what} activity recorded yet &mdash; platform saves stamp who and when.`
+  : lu[2] === "stamp"
+  ? `Last ${what} action: <b>${esc(lu[0] || "?")}</b> on <b>${luFmt(lu[1])}</b>.`
+  : `Latest recorded change: a deactivation on <b>${bfmt(lu[1])}</b> &mdash;
+     who-and-when stamping starts with platform saves.`) + `</div>`;
+
 function renderBadgeControls(){
   $("#bloc").innerHTML =
     `<option value="${ALL}" ${bloc===ALL?"selected":""}>All Locations</option>` +
@@ -671,7 +695,8 @@ function renderCoverage(){
     <div class="cell num">Employees</div><div class="cell num">Badged</div>
     <div class="cell num">Not badged</div><div class="cell num">Badges</div>
     <div class="cell num">Active</div><div class="cell num">Expiring</div>
-    <div class="cell num">Expired</div><div class="cell num">Coverage</div></div>`;
+    <div class="cell num">Expired</div><div class="cell num">Coverage</div>
+    <div class="cell num">Last update</div></div>`;
   let body = rows.map((c, i) => {
     const s = stats[c[0]] || {t: 0, Active: 0, Expiring: 0, Expired: 0};
     return `<div class="grow covrow ${i%2?"oddrow":""}" data-ld="${esc(c[0])}">
@@ -685,6 +710,7 @@ function renderCoverage(){
     ${num(s.Expired, s.Expired ? "var(--bad)" : "")}
     <div class="cell num">${c[1]
       ? `<span class="pill ${covPill(pct(c))}">${pct(c)}%</span>` : "&mdash;"}</div>
+    ${luCell(DATA.badgeLastUpd[c[0]])}
   </div>`; }).join("");
   const unmN = (stats[UNM] || {}).t || 0;
   const unmHit = !!q && DATA.badges.some(b => b[11] === "Unmatched"
@@ -695,10 +721,11 @@ function renderCoverage(){
     <div class="cell num">&mdash;</div><div class="cell num">&mdash;</div>
     <div class="cell num">&mdash;</div><div class="cell num">${unmN}</div>
     <div class="cell num">&mdash;</div><div class="cell num">&mdash;</div>
-    <div class="cell num">&mdash;</div><div class="cell num">&mdash;</div></div>`;
+    <div class="cell num">&mdash;</div><div class="cell num">&mdash;</div>
+    <div class="cell num">&mdash;</div></div>`;
   $("#bbody").innerHTML = rows.length || unmN
-    ? `<div class="grid" style="min-width:980px;grid-template-columns:
-        minmax(170px,1.7fr) 92px 76px 96px 76px 72px 76px 72px 96px">${head}${body}</div>`
+    ? `<div class="grid" style="min-width:1070px;grid-template-columns:
+        minmax(170px,1.7fr) 92px 76px 96px 76px 72px 76px 72px 96px 90px">${head}${body}</div>`
     : `<div style="padding:14px;color:var(--muted)">No labor distributions match.</div>`;
   $("#bcap").style.display = "none";
   $("#bnote").innerHTML = `<p><b>Badged</b> = the employee holds at least one live badge
@@ -708,7 +735,10 @@ function renderCoverage(){
     so low coverage there is expected. Coverage colors:
     <span class="pill active">90%+</span>
     <span class="pill expiring">70&ndash;89%</span>
-    <span class="pill expired">under 70%</span>.</p>`;
+    <span class="pill expired">under 70%</span>.
+    <b>Last update</b> = the newest recorded badge action at that location
+    (hover for who and when); dates marked * are the latest deactivation on
+    record, shown until platform saves start stamping who and when.</p>`;
 }
 
 function renderDrill(){
@@ -732,6 +762,10 @@ function renderDrill(){
         + (dspec[8] ? ` &middot; badge number &amp; expiration optional` : "")
         + (dspec[7] ? `<div style="margin-top:4px;font-style:italic;
             color:var(--muted)">Note: ${esc(dspec[7])}</div>` : "");
+    sp.innerHTML += luNote(DATA.badgeLastUpd[covLD], "badge");
+  } else if (!unm){
+    sp.style.display = "";
+    sp.innerHTML = luNote(DATA.badgeLastUpd[covLD], "badge");
   } else sp.style.display = "none";
   const liveRows = DATA.badges.filter(b => !isTermRow(b) && b[7] !== "Not Badged");
   let all = [];   // {b: badgeRow|null, e: [eid,name,ld,pos]|null}
@@ -1864,7 +1898,8 @@ function renderExt(){
     <div class="cell num">Employees</div><div class="cell num">Have it</div>
     <div class="cell num">Missing</div><div class="cell num">Credentials</div>
     <div class="cell num">Active</div><div class="cell num">Expiring</div>
-    <div class="cell num">Expired</div></div>`;
+    <div class="cell num">Expired</div>
+    <div class="cell num">Last update</div></div>`;
   const num = (v, color) => `<div class="cell num"${color
     ? ` style="color:${color};font-weight:700"` : ""}>${v}</div>`;
   const body = perLoc.map((r, i) => `<div class="grow covrow ${i%2?"oddrow":""}"
@@ -1877,10 +1912,11 @@ function renderExt(){
     <div class="cell num">${r.a}</div>
     ${num(r.x, r.x ? "#b45309" : "")}
     ${num(r.d, r.d ? "var(--bad)" : "")}
+    ${luCell(DATA.extLastUpd[r.l])}
   </div>`).join("");
   $("#ec-body").innerHTML = perLoc.length
-    ? `<div class="grid" style="min-width:880px;grid-template-columns:
-        minmax(180px,1.8fr) 100px 86px 86px 110px 76px 80px 76px">${head}${body}</div>`
+    ? `<div class="grid" style="min-width:970px;grid-template-columns:
+        minmax(180px,1.8fr) 100px 86px 86px 110px 76px 80px 76px 90px">${head}${body}</div>`
     : `<div style="padding:14px;color:var(--muted)">No locations match.</div>`;
   $("#ec-cap").style.display = "none";
   $("#ec-note").innerHTML = `<p><b>${esc(ecType)}</b> is an external credential
@@ -1888,7 +1924,10 @@ function renderExt(){
     and never linked to them. <b>Have it</b> = the employee holds a live
     ${esc(ecType)} filed at this location, matched by Employee ID. Which
     locations appear here is owner-configured in
-    <b>External Credential Requirements.csv</b>. Credential data as of
+    <b>External Credential Requirements.csv</b>. <b>Last update</b> = the newest
+    recorded credential action at that location (hover for who and when); dates
+    marked * are the latest deactivation on record, shown until platform saves
+    start stamping. Credential data as of
     <b>${esc(DATA.externalsAsof)}</b>.</p>`;
 }
 
@@ -1900,7 +1939,8 @@ function renderExtDrill(){
     + (extExpires(ecLD, ecType) ? ` &middot; expires (tracked, ${DATA.badgeSoonDays}-day
         warning)` : ` &middot; does not expire at this location`)
     + (rq && rq[4] ? `<div style="margin-top:4px;font-style:italic;
-        color:var(--muted)">Note: ${esc(rq[4])}</div>` : "");
+        color:var(--muted)">Note: ${esc(rq[4])}</div>` : "")
+    + luNote(DATA.extLastUpd[ecLD], "credential");
   const emps = DATA.employees.filter(e => e[2] === ecLD);
   const liveType = EXTS.filter(x => extLive(x) && !TERMG.includes(x[10])
     && x[4] === ecType);
