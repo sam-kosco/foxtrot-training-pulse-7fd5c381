@@ -1074,6 +1074,18 @@ const badgeById = id => DATA.badges.find(b => b[0] === id);
 const TYPES = [...new Set(DATA.badges.map(b => b[5]).filter(Boolean))].sort();
 const EMP = {};
 DATA.roster.forEach(r => EMP[`${r[1]} — ${r[0]}`] = r);
+// Resolve a picker value to a roster entry. Match the exact "Name — ID" key
+// first, then fall back to the trailing employee ID: a prefill from the
+// coverage drill-in carries the LEGAL name (DATA.employees), while EMP is
+// keyed on the roster's PREFERRED name, so "Nicholas Termer — 33783" must
+// still resolve to roster entry "Nic Termer — 33783" (ditto Isaiah/Zay Solivan).
+const EMP_BY_ID = {};
+DATA.roster.forEach(r => { EMP_BY_ID[r[0]] = r; });
+function resolveEmp(val){
+  if (EMP[val]) return EMP[val];
+  const id = String(val || "").split("—").pop().trim();
+  return EMP_BY_ID[id] || null;
+}
 
 const modal = $("#modal");
 function closeModal(){ modal.style.display = "none"; modal.innerHTML = ""; }
@@ -1312,7 +1324,7 @@ function openNewBadge(prefillName, prefillEid){
   // specifications populate ONLY when a location is selected - picking an
   // employee shows who they are but does not choose the location for you
   const syncInfo = () => {
-    const r = EMP[$("#f-emp").value];
+    const r = resolveEmp($("#f-emp").value);
     info.style.display = r ? "" : "none";
     if (r) info.innerHTML = `Emp ID: <b>${esc(r[0])}</b> &middot; ${esc(r[3]) || "&mdash;"}
       &middot; home: ${esc(r[2]) || "&mdash;"}`;
@@ -1323,7 +1335,7 @@ function openNewBadge(prefillName, prefillEid){
   const suggest = () => {
     const q = $("#f-emp").value.trim().toLowerCase();
     syncInfo();
-    if (!q || EMP[$("#f-emp").value]){ dd.style.display = "none"; return; }
+    if (!q || resolveEmp($("#f-emp").value)){ dd.style.display = "none"; return; }
     const toks = q.split(/\s+/);
     const hits = DATA.roster.filter(r => {
       const names = r[1].toLowerCase().split(/\s+/);
@@ -1353,12 +1365,13 @@ function openNewBadge(prefillName, prefillEid){
   });
   wireDate("f-exp");
   if (prefillName && prefillEid){
-    $("#f-emp").value = `${prefillName} — ${prefillEid}`;
+    const _pre = EMP_BY_ID[prefillEid];
+    $("#f-emp").value = _pre ? `${_pre[1]} — ${_pre[0]}` : `${prefillName} — ${prefillEid}`;
     syncInfo();
   }
   $("#f-cancel").onclick = closeModal;
   $("#f-save").onclick = () => {
-    const r = EMP[$("#f-emp").value], err = $("#f-err");
+    const r = resolveEmp($("#f-emp").value), err = $("#f-err");
     if (!r) { err.textContent = "Pick an employee from the list."; return; }
     if (!$("#f-loc").value) { err.textContent = "Pick the location."; return; }
     if (!$("#f-num").value.trim() && !optNumExp) {
@@ -1612,7 +1625,7 @@ function openNewCred(prefillName, prefillEid, prefillLoc){
   // word must START a name word; candidate refactor to share one picker)
   const info = $("#f-empinfo"), dd = $("#f-empdd");
   const syncInfo = () => {
-    const r = EMP[$("#f-emp").value];
+    const r = resolveEmp($("#f-emp").value);
     info.style.display = r ? "" : "none";
     if (r) info.innerHTML = `Emp ID: <b>${esc(r[0])}</b> &middot;
       ${esc(r[3]) || "&mdash;"} &middot; home: ${esc(r[2]) || "&mdash;"}`;
@@ -1620,7 +1633,7 @@ function openNewCred(prefillName, prefillEid, prefillLoc){
   const suggest = () => {
     const q = $("#f-emp").value.trim().toLowerCase();
     syncInfo();
-    if (!q || EMP[$("#f-emp").value]){ dd.style.display = "none"; return; }
+    if (!q || resolveEmp($("#f-emp").value)){ dd.style.display = "none"; return; }
     const toks = q.split(/\s+/);
     const hits = DATA.roster.filter(r => {
       const names = r[1].toLowerCase().split(/\s+/);
@@ -1665,12 +1678,13 @@ function openNewCred(prefillName, prefillEid, prefillLoc){
   wireDate("c-exp");
   applyReq();
   if (prefillName && prefillEid){
-    $("#f-emp").value = `${prefillName} — ${prefillEid}`;
+    const _pre = EMP_BY_ID[prefillEid];
+    $("#f-emp").value = _pre ? `${_pre[1]} — ${_pre[0]}` : `${prefillName} — ${prefillEid}`;
     syncInfo();
   }
   $("#f-cancel").onclick = closeModal;
   $("#f-save").onclick = () => {
-    const r = EMP[$("#f-emp").value], err = $("#f-err");
+    const r = resolveEmp($("#f-emp").value), err = $("#f-err");
     if (!r) { err.textContent = "Pick an employee from the list."; return; }
     const t = $("#c-type").value, l = $("#c-loc").value;
     if (!l) { err.textContent = "Pick the location."; return; }
