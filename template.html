@@ -804,14 +804,15 @@ function renderDrill(){
     .concat(["Expires","Status","Based at","Actions"]);
   const widths = "80px minmax(150px,1.5fr) minmax(100px,1fr) minmax(105px,1.05fr) " +
     "minmax(90px,.9fr) " + "72px ".repeat(specCols.length) +
-    "82px minmax(130px,1fr) minmax(130px,1.3fr) 150px";
+    "82px minmax(130px,1fr) minmax(130px,1.3fr) 185px";
   const head = `<div class="grow hrow">${cols.map(c => `<div class="cell">${c}</div>`).join("")}</div>`;
   const shown = rows.slice(0, ROWCAP);
   const body = shown.map((r, i) => {
     const b = r.b, e = r.e;
     const hl = b && DEEP && b[0] === DEEP ? " hlrow" : "";
     const acts = b
-      ? `<span class="rowact"><button data-act="renew" data-bid="${esc(b[0])}">Renew</button>` +
+      ? `<span class="rowact"><button data-act="edit" data-bid="${esc(b[0])}">Edit</button>` +
+        `<button data-act="renew" data-bid="${esc(b[0])}">Renew</button>` +
         `<button class="danger" data-act="deact" data-bid="${esc(b[0])}">Deact.</button></span>`
       : r.away ? "&mdash;"
       : `<span class="rowact"><button data-act="newfor" data-eid="${esc(e[0])}"
@@ -855,7 +856,7 @@ function renderDrill(){
     <div class="cell">${basedCell}</div>
     <div class="cell">${acts}</div></div>`; }).join("");
   $("#bbody").innerHTML = rows.length
-    ? `<div class="grid" style="min-width:${1020 + specCols.length * 72}px;
+    ? `<div class="grid" style="min-width:${1055 + specCols.length * 72}px;
         grid-template-columns:${widths}">${head}${body}</div>`
     : `<div style="padding:14px;color:var(--muted)">Nothing matches this filter.</div>`;
   const cap = $("#bcap");
@@ -1187,14 +1188,16 @@ function submitAction(payload){
     + "Check the page after the next rebuild before retrying."));
 }
 
-function openNewBadge(prefillName, prefillEid){
+function openNewBadge(prefillName, prefillEid, editBadge){
+  // editBadge (a badge row) opens this same form in EDIT mode: all fields
+  // pre-filled, saved as an `update` instead of a `create`.
   // location list = every folder plus every row of the Badge Specifications
   // table (so no-badge locations like MQY are selectable and answered)
   const folderOpts = [...new Set([...DATA.folders, ...Object.keys(DATA.badgeSpecs)])]
     .filter(f => f !== "(no labor dist)").sort();
   const yn = (id, opts) => `<select id="${id}"><option value="" selected>&mdash;</option>
     ${opts.map(o => `<option>${o}</option>`).join("")}</select>`;
-  openModal("New Badge", `
+  openModal(editBadge ? "Edit Badge" : "New Badge", `
     ${frow("Employee", `<div style="position:relative">
       <input id="f-emp" placeholder="start typing a first or last name&hellip;"
         autocomplete="off">
@@ -1231,7 +1234,7 @@ function openNewBadge(prefillName, prefillEid){
     </div>
     <div class="ferr" id="f-err"></div>
     <div class="btnrow"><button class="btn ghost" id="f-cancel">Cancel</button>
-      <button class="btn primary" id="f-save">Create badge</button></div>`);
+      <button class="btn primary" id="f-save">${editBadge ? "Save changes" : "Create badge"}</button></div>`);
   const info = $("#f-empinfo");
   let custMode = false, optNumExp = false;
   const applySpec = () => {
@@ -1373,6 +1376,27 @@ function openNewBadge(prefillName, prefillEid){
     $("#f-emp").value = _pre ? `${_pre[1]} — ${_pre[0]}` : `${prefillName} — ${prefillEid}`;
     syncInfo();
   }
+  if (editBadge){
+    // pre-fill every field from the existing badge. Set the location and kind,
+    // run applySpec (which lays out this location's question rows and locks the
+    // type), THEN restore the stored type/number/expiration/answers over it.
+    const b = editBadge, pre = EMP_BY_ID[b[1]];
+    $("#f-emp").value = pre ? `${pre[1]} — ${pre[0]}` : `${b[2]} — ${b[1]}`;
+    syncInfo();
+    $("#f-loc").value = b[9] || "";
+    $("#f-kind").value = b[5] === "Customer Badge" ? "Customer Badge" : "Standard Airport Badge";
+    applySpec();
+    if ($("#f-typesel").style.display !== "none") $("#f-typesel").value = b[5] || "";
+    else $("#f-type").value = b[5] || "";
+    $("#f-num").value = b[4] || "";
+    $("#f-exp").value = isoToMDY(b[6]) || b[6] || "";
+    const setYN = (id, v) => { const el = $("#" + id); if (el) el.value = (v === "Yes" || v === "No") ? v : ""; };
+    setYN("f-escort", b[13]); setYN("f-cbp", b[14]); setYN("f-aoa", b[15]); setYN("f-tool", b[19]);
+    if (custMode && b[14] === "Yes"){ $("#f-row-custnum").style.display = ""; $("#f-custnum").value = b[20] || ""; }
+    if ($("#f-row-xq").style.display !== "none" && b[16]){
+      const m = /(Yes|No)\s*$/i.exec(b[16]); if (m) $("#f-xq").value = m[1];
+    }
+  }
   $("#f-cancel").onclick = closeModal;
   $("#f-save").onclick = () => {
     const r = resolveEmp($("#f-emp").value), err = $("#f-err");
@@ -1404,11 +1428,18 @@ function openNewBadge(prefillName, prefillEid){
     if (multiSel && !$("#f-typesel").value){
       err.textContent = "Pick the badge type."; return;
     }
-    const payload = {action: "create", employeeId: r[0], employeeName: r[1],
+    const payload = {action: editBadge ? "update" : "create",
+      employeeId: r[0], employeeName: r[1],
       location: $("#f-loc").value,
       badgeType: multiSel ? $("#f-typesel").value : $("#f-type").value.trim(),
       badgeNumber: $("#f-num").value.trim(), expiration: expIso,
       requestedAt: new Date().toISOString()};
+    if (editBadge) payload.badgeId = editBadge[0];
+    // guard: the badge number must not be the employee id (a common typo)
+    const _dig = s => String(s || "").replace(/\D/g, "").replace(/^0+/, "");
+    if (payload.badgeNumber && _dig(payload.badgeNumber) && _dig(payload.badgeNumber) === _dig(r[0])){
+      err.textContent = "That's the Employee ID, not a badge number."; return;
+    }
     if (custMode && $("#f-cbp").value === "Yes" && !$("#f-custnum").value.trim()){
       err.textContent = "Enter the customs seal number.";
       return;
@@ -2142,6 +2173,7 @@ $("#bbody").addEventListener("click", e => {
   const btn = e.target.closest("button[data-act]");
   if (btn){
     if (btn.dataset.act === "renew") openRenew(btn.dataset.bid);
+    else if (btn.dataset.act === "edit") openNewBadge(null, null, badgeById(btn.dataset.bid));
     else if (btn.dataset.act === "newfor") openNewBadge(btn.dataset.name, btn.dataset.eid);
     else openDeactivate(btn.dataset.bid);
     return;
