@@ -20,7 +20,7 @@ body{margin:0;background:var(--paper);color:var(--ink);
 .brand{font-size:19px;font-weight:800;letter-spacing:.01em}
 .brand span{color:var(--orange)}
 .topmeta{margin-left:auto;font-size:12px;color:#9fb0c8;text-align:right;line-height:1.35}
-.wrap{max-width:1180px;margin:0 auto;padding:22px 22px 60px}
+.wrap{max-width:1360px;margin:0 auto;padding:22px 22px 60px}
 h2{color:var(--ink);font-size:22px;font-weight:800;margin:0}
 h2 .sub{color:var(--muted);font-weight:600;font-size:14px}
 .controls{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;margin:14px 0 18px}
@@ -804,7 +804,7 @@ function renderDrill(){
     .concat(["Expires","Status","Based at","Actions"]);
   const widths = "80px minmax(150px,1.5fr) minmax(100px,1fr) minmax(105px,1.05fr) " +
     "minmax(90px,.9fr) " + "72px ".repeat(specCols.length) +
-    "82px 118px 100px 150px";
+    "82px minmax(130px,1fr) minmax(130px,1.3fr) 150px";
   const head = `<div class="grow hrow">${cols.map(c => `<div class="cell">${c}</div>`).join("")}</div>`;
   const shown = rows.slice(0, ROWCAP);
   const body = shown.map((r, i) => {
@@ -819,15 +819,19 @@ function renderDrill(){
     // Based at = the HOLDER's labor dist; a visitor's badge (holder based in
     // another folder) gets the plane marker - the badge itself belongs here
     const visitor = b && !unm && b[10] && b[10] !== covLD;
-    const basedCell = !b ? "&mdash;"
+    // Based at = where the badge is FILED. For a "badged elsewhere" person
+    // (their own labor dist is this folder, but their live badge sits in
+    // another folder) show that location here with the plane marker — full and
+    // readable — instead of cramming "badged at …" into the Status column.
+    const basedCell = r.away
+      ? `<span style="color:var(--muted)" title="holds a live badge filed at
+          another location">&#9992;&#65039; ${esc(r.away.join(", "))}</span>`
+      : !b ? "&mdash;"
       : visitor ? `<span style="color:var(--orange);font-weight:700"
           title="held by someone based at another location - the badge belongs
           to this one">&#9992;&#65039; ${esc(b[10])}</span>`
       : esc(b[10]) || "&mdash;";
-    const statCell = r.away
-      ? `<span style="font-size:12px;color:var(--muted)" title="holds a live badge
-          filed at another location">&#9992;&#65039; badged at ${esc(r.away.join(", "))}</span>`
-      : `<span class="pill ${PILLC[stat(r)] || "unknown"}">${esc(stat(r))}</span>`;
+    const statCell = `<span class="pill ${PILLC[stat(r)] || "unknown"}">${esc(stat(r))}</span>`;
     const specCells = specCols.map(([full, idx, , mode]) => {
       if (!b) return `<div class="cell">&mdash;</div>`;
       let v = b[idx] || "";
@@ -851,7 +855,7 @@ function renderDrill(){
     <div class="cell">${basedCell}</div>
     <div class="cell">${acts}</div></div>`; }).join("");
   $("#bbody").innerHTML = rows.length
-    ? `<div class="grid" style="min-width:${1040 + specCols.length * 72}px;
+    ? `<div class="grid" style="min-width:${1020 + specCols.length * 72}px;
         grid-template-columns:${widths}">${head}${body}</div>`
     : `<div style="padding:14px;color:var(--muted)">Nothing matches this filter.</div>`;
   const cap = $("#bcap");
