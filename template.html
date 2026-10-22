@@ -815,10 +815,7 @@ function renderCoverage(){
     counted as a gap and they're left out of the headline Coverage. Coverage colors:
     <span class="pill active">90%+</span>
     <span class="pill expiring">70&ndash;89%</span>
-    <span class="pill expired">under 70%</span>.
-    <b>Last update</b> = the newest recorded badge action at that airport
-    (open the airport for who and when); dates marked * are the latest
-    deactivation on record, shown until platform saves start stamping.</p>`;
+    <span class="pill expired">under 70%</span>.</p>`;
 }
 
 function renderDrill(){
@@ -2086,10 +2083,7 @@ function renderExt(){
     and never linked to them. <b>Have it</b> = the employee holds a live
     ${esc(ecType)} filed at this location, matched by Employee ID. Which
     locations appear here is owner-configured in
-    <b>External Credential Requirements.csv</b>. <b>Last update</b> = the newest
-    recorded credential action at that location (open the location for who and
-    when); dates marked * are the latest deactivation on record, shown until
-    platform saves start stamping. Credential data as of
+    <b>External Credential Requirements.csv</b>. Credential data as of
     <b>${esc(DATA.externalsAsof)}</b>.</p>`;
 }
 
