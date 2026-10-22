@@ -128,10 +128,10 @@ input.search:focus{outline:none;border-color:var(--orange)}
 /* wide modal + 2-column field layout for the New/Edit Badge form, so the
    many fields fit without vertical scrolling */
 .mcard.wide{width:820px}
-.mcard.wide #f-specwrap{display:grid;grid-template-columns:1fr 1fr;
+.mcard.wide #f-head,.mcard.wide #f-specwrap{display:grid;grid-template-columns:1fr 1fr;
   gap:0 22px;align-items:start}
 @media(max-width:720px){.mcard.wide{width:460px}
-  .mcard.wide #f-specwrap{grid-template-columns:1fr}}
+  .mcard.wide #f-head,.mcard.wide #f-specwrap{grid-template-columns:1fr}}
 .frow{margin-bottom:12px}
 .frow label{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:4px}
 .frow input,.frow select{width:100%;font:inherit;color:var(--ink);background:var(--surface);
@@ -1097,10 +1097,12 @@ function applyTab(){
   });
   const cov = bview === "cov";
   const drilled = cov && covLD;
-  $("#btn-new").style.display = cov ? "" : "none";
+  // New Badge lives only on a location's page — the location is then fixed,
+  // so the form needs no location field (Unmatched isn't a real location)
+  $("#btn-new").style.display = (drilled && covLD !== UNM) ? "" : "none";
   $("#btn-back").style.display = drilled ? "" : "none";
   $("#act-hint").textContent = drilled
-    ? "Renew or deactivate from a row; the New badge row button pre-fills the employee."
+    ? "Renew or deactivate from a row; New Badge files to this location."
     : cov ? "Click a labor distribution to see its people and badges." : "";
   // the location dropdown exists only on the Deactivated view (Coverage
   // navigates by folder instead); it always includes All Locations
@@ -1231,16 +1233,17 @@ function submitAction(payload){
     + "Check the page after the next rebuild before retrying."));
 }
 
-function openNewBadge(prefillName, prefillEid, editBadge){
+function openNewBadge(prefillName, prefillEid, editBadge, presetLoc){
   // editBadge (a badge row) opens this same form in EDIT mode: all fields
   // pre-filled, saved as an `update` instead of a `create`.
-  // location list = every folder plus every row of the Badge Specifications
-  // table (so no-badge locations like MQY are selectable and answered)
-  const folderOpts = [...new Set([...DATA.folders, ...Object.keys(DATA.badgeSpecs)])]
-    .filter(f => f !== "(no labor dist)").sort();
+  // Location is NO LONGER a field: New Badge is only reachable from a
+  // location's drill-down, so the location is fixed (the folder you're on,
+  // or the badge's own location in edit mode) and carried in a hidden input.
+  const effLoc = editBadge ? (editBadge[9] || "") : (presetLoc || "");
   const yn = (id, opts) => `<select id="${id}"><option value="" selected>&mdash;</option>
     ${opts.map(o => `<option>${o}</option>`).join("")}</select>`;
-  openModal(editBadge ? "Edit Badge" : "New Badge", `
+  openModal((editBadge ? "Edit Badge" : "New Badge") + (effLoc ? " · " + effLoc : ""), `
+    <div id="f-head">
     ${frow("Employee", `<div style="position:relative">
       <input id="f-emp" placeholder="start typing a first or last name&hellip;"
         autocomplete="off">
@@ -1248,13 +1251,12 @@ function openNewBadge(prefillName, prefillEid, editBadge){
         background:var(--surface);border:1px solid var(--line);
         border-radius:0 0 8px 8px;max-height:190px;overflow:auto;display:none;
         box-shadow:0 8px 20px #0003"></div></div>`)}
-    <div class="kv2" id="f-empinfo" style="display:none"></div>
-    ${frow("Location (Labor Distribution)", `<select id="f-loc">
-      <option value="" selected>&mdash; pick a location &mdash;</option>
-      ${folderOpts.map(l => `<option>${esc(l)}</option>`).join("")}</select>`)}
     ${frow("Badge", `<select id="f-kind">
       <option selected>Standard Airport Badge</option>
       <option>Customer Badge</option></select>`)}
+    </div>
+    <input type="hidden" id="f-loc">
+    <div class="kv2" id="f-empinfo" style="display:none"></div>
     <div class="kv2" id="f-specnote" style="display:none"></div>
     <div id="f-specwrap">
     ${frow("Badge Type", `<input id="f-type" list="typelist" placeholder="set by the
@@ -1407,13 +1409,15 @@ function openNewBadge(prefillName, prefillEid, editBadge){
     syncInfo();
   });
   $("#f-emp").addEventListener("blur", () => setTimeout(() => dd.style.display = "none", 150));
-  $("#f-loc").addEventListener("change", applySpec);
   $("#f-kind").addEventListener("change", applySpec);
   $("#f-cbp").addEventListener("change", () => {
     $("#f-row-custnum").style.display =
       (custMode && $("#f-cbp").value === "Yes") ? "" : "none";
   });
   wireDate("f-exp");
+  // the location is fixed (no field) — set it, then lay out its spec
+  $("#f-loc").value = effLoc;
+  if (!editBadge) applySpec();
   if (prefillName && prefillEid){
     const _pre = EMP_BY_ID[prefillEid];
     $("#f-emp").value = _pre ? `${_pre[1]} — ${_pre[0]}` : `${prefillName} — ${prefillEid}`;
@@ -1426,7 +1430,6 @@ function openNewBadge(prefillName, prefillEid, editBadge){
     const b = editBadge, pre = EMP_BY_ID[b[1]];
     $("#f-emp").value = pre ? `${pre[1]} — ${pre[0]}` : `${b[2]} — ${b[1]}`;
     syncInfo();
-    $("#f-loc").value = b[9] || "";
     $("#f-kind").value = b[5] === "Customer Badge" ? "Customer Badge" : "Standard Airport Badge";
     applySpec();
     if ($("#f-typesel").style.display !== "none") $("#f-typesel").value = b[5] || "";
@@ -1444,7 +1447,7 @@ function openNewBadge(prefillName, prefillEid, editBadge){
   $("#f-save").onclick = () => {
     const r = resolveEmp($("#f-emp").value), err = $("#f-err");
     if (!r) { err.textContent = "Pick an employee from the list."; return; }
-    if (!$("#f-loc").value) { err.textContent = "Pick the location."; return; }
+    if (!$("#f-loc").value) { err.textContent = "No location set — open New Badge from a location page."; return; }
     if (!$("#f-num").value.trim() && !optNumExp) {
       err.textContent = "Enter the Badge Number."; return; }
     // access-keys locations may leave number/expiration blank; a typed
@@ -2212,13 +2215,13 @@ updateTermedPill();
 $("#bloc").addEventListener("change", e => { bloc = e.target.value; saveState(); renderBadges(); });
 $("#bstat").addEventListener("change", e => { bstat = e.target.value; saveState(); renderBadges(); });
 $("#bsearch").addEventListener("input", e => { bq = e.target.value; renderBadges(); });
-$("#btn-new").addEventListener("click", () => openNewBadge());
+$("#btn-new").addEventListener("click", () => openNewBadge(null, null, null, covLD));
 $("#bbody").addEventListener("click", e => {
   const btn = e.target.closest("button[data-act]");
   if (btn){
     if (btn.dataset.act === "renew") openRenew(btn.dataset.bid);
     else if (btn.dataset.act === "edit") openNewBadge(null, null, badgeById(btn.dataset.bid));
-    else if (btn.dataset.act === "newfor") openNewBadge(btn.dataset.name, btn.dataset.eid);
+    else if (btn.dataset.act === "newfor") openNewBadge(btn.dataset.name, btn.dataset.eid, null, covLD);
     else openDeactivate(btn.dataset.bid);
     return;
   }
