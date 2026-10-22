@@ -647,12 +647,12 @@ const luFmt = at => {
   let h = +m[4]; const ap = h >= 12 ? "PM" : "AM"; h = h % 12 || 12;
   return `${m[2]}/${m[3]}/${m[1].slice(2)} at ${h}:${m[5]} ${ap}`;
 };
+// dates only on the dashboard - who and when live in the breakdown note
+// (Clara, 2026-10-22: no hover tooltips)
 const luCell = lu => !lu ? `<div class="cell num" style="color:var(--muted)">&mdash;</div>`
   : lu[2] === "stamp"
-  ? `<div class="cell num" title="by ${esc(lu[0] || "?")} on ${esc(luFmt(lu[1]))}">
-       ${bfmt(lu[1].slice(0, 10))}</div>`
-  : `<div class="cell num" style="color:var(--muted)" title="latest deactivation
-       on record - platform saves will stamp who and when">${bfmt(lu[1])}*</div>`;
+  ? `<div class="cell num">${bfmt(lu[1].slice(0, 10))}</div>`
+  : `<div class="cell num" style="color:var(--muted)">${bfmt(lu[1])}*</div>`;
 const luNote = (lu, what) => `<div style="margin-top:6px;font-size:12.5px;
     color:var(--muted)">` + (!lu
   ? `No ${what} activity recorded yet &mdash; platform saves stamp who and when.`
@@ -817,8 +817,8 @@ function renderCoverage(){
     <span class="pill expiring">70&ndash;89%</span>
     <span class="pill expired">under 70%</span>.
     <b>Last update</b> = the newest recorded badge action at that airport
-    (hover for who and when); dates marked * are the latest deactivation on
-    record, shown until platform saves start stamping who and when.</p>`;
+    (open the airport for who and when); dates marked * are the latest
+    deactivation on record, shown until platform saves start stamping.</p>`;
 }
 
 function renderDrill(){
@@ -2087,9 +2087,9 @@ function renderExt(){
     ${esc(ecType)} filed at this location, matched by Employee ID. Which
     locations appear here is owner-configured in
     <b>External Credential Requirements.csv</b>. <b>Last update</b> = the newest
-    recorded credential action at that location (hover for who and when); dates
-    marked * are the latest deactivation on record, shown until platform saves
-    start stamping. Credential data as of
+    recorded credential action at that location (open the location for who and
+    when); dates marked * are the latest deactivation on record, shown until
+    platform saves start stamping. Credential data as of
     <b>${esc(DATA.externalsAsof)}</b>.</p>`;
 }
 
