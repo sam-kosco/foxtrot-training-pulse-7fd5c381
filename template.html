@@ -742,7 +742,9 @@ function renderDrill(){
   const sp = $("#bspec");
   if (dspec){
     sp.style.display = "";
-    sp.innerHTML = dspec[0].toLowerCase() === "no"
+    // header carries the location name so it's visible when scrolled to the table
+    const specHdr = `<div style="font-weight:700;margin-bottom:5px">${esc(covLD)} Badging Specification</div>`;
+    sp.innerHTML = specHdr + (dspec[0].toLowerCase() === "no"
       ? `<b>No Badge Required</b> at ${esc(covLD)} for airport badges &middot;
          <b>Badge Type:</b> Customer Badge (available)`
       : `<b>Badge Type:</b> ${esc(dspec[1]) || "&mdash;"} or Customer Badge`
@@ -754,7 +756,7 @@ function renderDrill(){
         + (dspec[6] ? ` &middot; <b>${esc(dspec[6])}:</b> Yes / No` : "")
         + (dspec[8] ? ` &middot; badge number &amp; expiration optional` : "")
         + (dspec[7] ? `<div style="margin-top:4px;font-style:italic;
-            color:var(--muted)">Note: ${esc(dspec[7])}</div>` : "");
+            color:var(--muted)">Note: ${esc(dspec[7])}</div>` : ""));
   } else sp.style.display = "none";
   const liveRows = DATA.badges.filter(b => !isTermRow(b) && b[7] !== "Not Badged");
   let all = [];   // {b: badgeRow|null, e: [eid,name,ld,pos]|null}
