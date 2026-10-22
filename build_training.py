@@ -498,9 +498,11 @@ def main():
         bid = r.get("Badge ID", "").strip()
         num = r.get("Badge Number", "").strip()
         returned = r.get("Returned", "").strip()
-        # a row without a badge number is not a badge - it is a person on
-        # record without one (unless it is a closed-out/termed record)
-        if (not num or num.upper() == "N/A") and status not in (
+        # a row whose Badge Number has no digit is not a real badge - blank,
+        # "N", "N/A", "pending", "in process" are all placeholders, so the
+        # person is Not Badged rather than a junk value rendering as a badge
+        # (unless it is a closed-out/termed record)
+        if not re.search(r"\d", num) and status not in (
                 "Termed", "Deactivated") and es not in TERM_GROUP:
             status = "Not Badged"
         def ynorm(v):
@@ -528,7 +530,7 @@ def main():
         # terminations going forward); legacy records were bulk-closed at
         # process start (2026-08-27) with prior return status unknown.
         if (es in TERM_GROUP and returned != "Yes"
-                and num and num.upper() != "N/A"
+                and re.search(r"\d", num)
                 and status not in ("Deactivated", "Termed", "Not Badged")):
             badge_alerts.append([bid, bname, num, bloc, labor,
                                  "; ".join(loc_mgrs.get(labor, [])), es])

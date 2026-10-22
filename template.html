@@ -672,6 +672,29 @@ function renderCoverage(){
     <div class="cell num">Not badged</div><div class="cell num">Badges</div>
     <div class="cell num">Active</div><div class="cell num">Expiring</div>
     <div class="cell num">Expired</div><div class="cell num">Coverage</div></div>`;
+  // While searching, expand each matching location to its matching people —
+  // one row per BADGE INSTANCE (so a person badged at two locations appears
+  // under both), plus matching employees based there. Each sub-row drills into
+  // that location on click (same data-ld as the location row).
+  const subRows = ld => {
+    if (!q) return "";
+    const seen = new Set(), out = [];
+    DATA.badges.filter(b => (b[9] || "(no location)") === ld && b[11] !== "Unmatched"
+        && !isTermRow(b) && b[7] !== "Not Badged" && bHit(b)).forEach(b => {
+      seen.add(eidKey(b[1]));
+      out.push(`${esc(b[2])}<span style="color:var(--muted);font-weight:400">
+        &middot; Emp ${esc(b[1]) || "&mdash;"} &middot; ${esc(b[5] || "Badge")}${
+        b[4] ? " #" + esc(b[4]) : ""} &middot; ${esc(b[7])}</span>`);
+    });
+    DATA.employees.filter(e => e[2] === ld && eHit(e) && !seen.has(e[0])).forEach(e => {
+      seen.add(e[0]);
+      out.push(`${esc(e[1])}<span style="color:var(--muted);font-weight:400">
+        &middot; Emp ${esc(e[0])} &middot; based here, no badge filed here</span>`);
+    });
+    return out.slice(0, 40).map(txt => `<div class="grow covrow" data-ld="${esc(ld)}">
+      <div class="cell" style="grid-column:1/-1;padding-left:30px;font-size:12.5px;
+        font-weight:500;background:var(--rowtint)">&#8627; ${txt}</div></div>`).join("");
+  };
   let body = rows.map((c, i) => {
     const s = stats[c[0]] || {t: 0, Active: 0, Expiring: 0, Expired: 0};
     return `<div class="grow covrow ${i%2?"oddrow":""}" data-ld="${esc(c[0])}">
@@ -685,7 +708,7 @@ function renderCoverage(){
     ${num(s.Expired, s.Expired ? "var(--bad)" : "")}
     <div class="cell num">${c[1]
       ? `<span class="pill ${covPill(pct(c))}">${pct(c)}%</span>` : "&mdash;"}</div>
-  </div>`; }).join("");
+  </div>` + subRows(c[0]); }).join("");
   const unmN = (stats[UNM] || {}).t || 0;
   const unmHit = !!q && DATA.badges.some(b => b[11] === "Unmatched"
     && !isTermRow(b) && bHit(b));
