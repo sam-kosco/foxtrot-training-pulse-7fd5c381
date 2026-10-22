@@ -1351,14 +1351,14 @@ function openNewBadge(prefillName, prefillEid, editBadge, presetLoc){
       return;
     }
     if (spec){
-      note.style.display = "";
+      // No banner here (Sam, 2026-10-22): "answer each question Yes or No"
+      // read as covering the whole form, when only the location's access
+      // questions are Yes/No - the fields speak for themselves.
+      note.style.display = "none"; note.innerHTML = "";
       // a location with two standard types (CAK HQ "SIDA or AOA", JAX "Blue
       // or Blue Escort") gets a dropdown so the user picks - never free-typed;
       // single-type locations stay locked
       const multiType = / or /i.test(spec[1]);
-      note.innerHTML = `Standard specification for <b>${esc(locv)}</b> loaded &mdash;
-        answer each question Yes or No.` + (multiType
-        ? ` This location issues more than one badge type &mdash; pick the one issued.` : "");
       const tsel = $("#f-typesel");
       $("#f-type").style.display = multiType ? "none" : "";
       tsel.style.display = multiType ? "" : "none";
@@ -1384,8 +1384,10 @@ function openNewBadge(prefillName, prefillEid, editBadge, presetLoc){
       $("#f-row-custnum").style.display = "none";
       // Access-keys locations (SCF, SLN): number and expiration are optional
       optNumExp = !!spec[8];
-      if (optNumExp) note.innerHTML += ` Badge number and expiration date are
-        <b>optional</b> here.`;
+      if (optNumExp) {
+        note.style.display = "";
+        note.innerHTML = `Badge number and expiration date are <b>optional</b> here.`;
+      }
       // location-exclusive extra question (Ramp Access, Green Stripe...)
       $("#f-row-xq").style.display = spec[6] ? "" : "none";
       if (spec[6]) { $("#f-xq-label").textContent = spec[6]; $("#f-xq").value = ""; }
