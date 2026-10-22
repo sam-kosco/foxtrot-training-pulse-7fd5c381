@@ -31,6 +31,7 @@ The repo name carries a random suffix and the page carries `noindex` because the
 - **Needs attention watchlist** (the addition, shown under the KPIs): a person is listed when (LMS Overdue + S101 Overdue) ÷ (LMS counted + S101 required) > 20%. Follows the RM/location filter. **LMS↔Safety101 join is ID-FIRST (2026-09-30):** both the LMS transcript and S101 now carry the Paylocity payroll id, so `lms_people` is **keyed by Employee ID** (not name — name-keying merged two different people who share a name) and a two-pass join claims all exact-id matches globally first (512/512), then falls back to name / preferred-name / first+last only for leftovers (blank-id LMS rows, old transcripts), matching a name only when it resolves to a single unclaimed person. `JOIN_DEBUG=1` prints unmatched S101 + LMS-only rows. This correctly keeps **two distinct same-named people apart** — e.g. the two Levorn Smallwoods (57368 Regional Manager II / 60387 Aviation Supervisor), both real, both in LMS+S101 under their own ids; the old name join conflated them into one row.
 - The page force-reloads every 30 minutes; filter state persists in sessionStorage across reloads (validated against the active scope).
 - **Platform-embed scoping (2026-08-26)**: the platform shell appends `#pscope={rms,locs}` (URL-encoded JSON) to the iframe src, computed per acting user from the org chart (`/api/training/scope`). When present: the location dropdown trims to `locs`, the RM dropdown hides unless `rms` is non-empty (only RMs *below* the viewer appear), and the unfiltered default aggregates over "your locations". Matching is case-insensitive on both names and locations (training locations ARE labor-dist names). No hash = public/mirror behavior, completely unfiltered — that's the whole isolation mechanism, keep it hash-only.
+- **The Badge Tracker follows the same hash (2026-10-22, Sam):** `BSCOPE` = the AIRPORT groups the scope's `locs` map to through `badgeGroup()` — the template's mirror of `badge_group()` in build_training.py, which must stay identical. Coverage rows, the headline tiles, drill-ins (a saved or linked out-of-scope airport falls back to coverage), the Deactivated view, its pill count and Airport dropdown, and `#badge/` / `#renew/` deep links all keep to it. Unmatched records belong to no airport, so only unscoped viewers see them. Before this every embedded viewer saw all 43 airports while their Home card counted three; now the two agree (Wylie Stemple: BNA, MCN, OMA — 71 employees, 42 badged, 81%). The public page and mirror carry no hash and stay unfiltered. The tracker's wording says AIRPORT throughout (coverage header, Airport column and dropdown, "← All airports"); the holder's own location reads "Based at".
 
 ## Badges (Training and Credentials)
 
@@ -50,9 +51,28 @@ two top tabs — Training | Badges — with Active/Terminated sub-views inside B
   Unmatched records are kept and labeled (never guessed, never dropped).
   A badge with Returned = Yes always renders in the Deactivated view, never active;
   the Returned column is shown only there.
-- **Sub-views (two):** Coverage — the entry view: one row per FOLDER (all labor
-  distributions plus any badge-only locations like SRQ; employee counts from
-  Current Employees.csv, badge counts by where the badge is FILED). Badges file
+- **Badge grouping (airport-level, 2026-10-21):** the whole Badge Tracker groups
+  by AIRPORT, not by individual labor distribution — badging is an airport-level
+  concern and the dists at an airport almost always share one spec. `badge_group()`
+  in `build_training.py` collapses every dist/location to its 3-letter airport code
+  (BNA MRO/FAC/PRIV/CABIN → `BNA`, DFW CABIN/WIDEBODY → `DFW`), with two confirmed
+  exceptions: **CAK** stays per-dist (`CAK PRIV`/`CAK CABIN`/`CAK HQ` issue different
+  badge types) and **STL** splits into `STL AA` (STL AA CAB/ULTRA/FAC — AA-client,
+  identical spec) and `STL GJ` (STL GOJET — Green Stripe). It's applied in the build
+  to the EMBEDDED data only — badge location `[9]` + holder labor dist `[10]`,
+  coverage, folders, specs (re-keyed by group; operational fields must agree within a
+  group or it warns), badgeLocs, and the grouped contact map `grp_mgrs`. **Badges.csv
+  and the spec CSV are never rewritten** (new badges just file under the group name;
+  the per-dist rows regroup at the next build), and **External Credentials keep their
+  own ungrouped locations/`loc_mgrs`.** The JS template needed no change — it already
+  keys off those fields. `badgeGroup()` logic, if ever needed client-side, must mirror
+  the Python exactly.
+- **Sub-views (two):** Coverage — the entry view: one row per FOLDER (now an airport
+  group per the rule above; plus any badge-only groups like SRQ; employee counts from
+  Current Employees.csv, badge counts by where the badge is FILED). **Coverage/Badged
+  counts a person only if they hold a live badge filed in THAT group** (a badge at a
+  different airport doesn't count); no-badge-required groups are excluded from the
+  headline Coverage %. Badges file
   by badge location, which was rewritten to the official folder vocabulary
   (Clara's decision sheet + rule: single-candidate airport, else holder's own
   labor dist). Clicking a folder drills in: the badges filed there (a visitor's

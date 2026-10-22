@@ -87,6 +87,31 @@ def norm_name(s):
     return " ".join(re.sub(r"[^a-z ]", " ", s.lower()).split())
 
 
+def badge_group(name):
+    """Collapse a labor dist / badge location to its BADGE GROUP — the unit the
+    badge tracker groups by. Badging is an airport-level concern, so every
+    distribution at an airport shares one group (its 3-letter code) with two
+    exceptions confirmed from the Badge Specifications:
+      - CAK is kept per distribution (CAK PRIV / CAK CABIN / CAK HQ issue
+        genuinely different badge types), so its dists stay separate.
+      - STL splits into STL AA (STL AA CAB / STL ULTRA / STL FAC — all
+        AA-client, identical spec) and STL GJ (STL GOJET — the Green-Stripe one).
+    Non-airport labels (e.g. "(no labor dist)") are returned unchanged.
+    This only regroups the badge tracker's coverage/drill/spec views; it never
+    rewrites Badges.csv, and External Credentials keep their own locations."""
+    name = (name or "").strip()
+    if not name:
+        return name
+    air = name[:3].upper()
+    if air == "CAK":
+        return name
+    if air == "STL":
+        return "STL GJ" if "GOJET" in name.upper() else "STL AA"
+    if len(air) == 3 and air.isalpha():
+        return air
+    return name
+
+
 def short_date(s):
     """'04/08/2026' -> '04/08/26' (leaves anything unparseable untouched)."""
     try:
@@ -407,6 +432,15 @@ def main():
     for mgr, locs in managers.items():
         for l in locs:
             loc_mgrs.setdefault(l, []).append(mgr)
+    # badge-group -> managers: the badge tracker groups by airport, so a group's
+    # contacts are every manager of its member distributions (External
+    # Credentials still use loc_mgrs, keyed by the ungrouped labor dist)
+    grp_mgrs = {}
+    for l, mgs in loc_mgrs.items():
+        gg = grp_mgrs.setdefault(badge_group(l), [])
+        for m in mgs:
+            if m not in gg:
+                gg.append(m)
     # Active employees: Current Employees.csv (id, status, Home Labor
     # Assignment). Terminated employees: Terminated Employees.csv - the
     # source of truth for the terminated list, including Employee IDs.
@@ -454,7 +488,10 @@ def main():
         bname = fix_display_name(r.get("Employee Name", "").strip())
         if not bname:
             continue
-        bloc = r.get("Location", "").strip()
+        # badge tracker groups by airport: file this badge under its group
+        # (BNA MRO -> BNA, STL AA CAB -> STL AA; CAK stays per-dist). The raw
+        # Location in Badges.csv is left untouched — this is display only.
+        bloc = badge_group(r.get("Location", "").strip())
         stored = r.get("Status", "").strip()
         bexp = r.get("Expiration Date", "").strip()
         if stored in KEEP_STATUS:
@@ -507,12 +544,17 @@ def main():
                 shown_eid = shown_eid or tmatch
             else:
                 es, labor, position = "Unmatched", "", ""
+        # the holder's labor dist is shown grouped too, so "Based at" compares
+        # like with like (a regional holder still flags as a visitor by group)
+        labor = badge_group(labor)
         bid = r.get("Badge ID", "").strip()
         num = r.get("Badge Number", "").strip()
         returned = r.get("Returned", "").strip()
-        # a row without a badge number is not a badge - it is a person on
-        # record without one (unless it is a closed-out/termed record)
-        if (not num or num.upper() == "N/A") and status not in (
+        # a row whose Badge Number has no digit is not a real badge - blank,
+        # "N", "N/A", "pending", "in process" are all placeholders, so the
+        # person is Not Badged rather than a junk value rendering as a badge
+        # (unless it is a closed-out/termed record)
+        if not re.search(r"\d", num) and status not in (
                 "Termed", "Deactivated") and es not in TERM_GROUP:
             status = "Not Badged"
         def ynorm(v):
@@ -541,10 +583,10 @@ def main():
         # terminations going forward); legacy records were bulk-closed at
         # process start (2026-08-27) with prior return status unknown.
         if (es in TERM_GROUP and returned != "Yes"
-                and num and num.upper() != "N/A"
+                and re.search(r"\d", num)
                 and status not in ("Deactivated", "Termed", "Not Badged")):
             badge_alerts.append([bid, bname, num, bloc, labor,
-                                 "; ".join(loc_mgrs.get(labor, [])), es])
+                                 "; ".join(grp_mgrs.get(labor, [])), es])
     border = {"Expired": 0, "Expiring": 1, "Unknown": 2, "Active": 3,
               "Not Badged": 4, "Termed": 5}
     badge_rows.sort(key=lambda b: (border.get(b[7], 9), b[9], b[2]))
@@ -583,7 +625,7 @@ def main():
             "kind": kind, "badgeId": b[0], "employee": b[2],
             "employeeId": b[1], "badgeNumber": b[4], "badgeType": b[5],
             "location": b[9], "laborDist": b[10], "expiration": b[6],
-            "daysLeft": days, "contacts": loc_mgrs.get(b[9], []),
+            "daysLeft": days, "contacts": grp_mgrs.get(b[9], []),
             "link": f"{PAGES_URL}#renew/{b[0]}",
         })
     for a in badge_alerts:
@@ -598,39 +640,38 @@ def main():
         kc[a["kind"]] = kc.get(a["kind"], 0) + 1
     print(f"alerts feed: {kc or 'empty'}")
 
-    # ---- Coverage: employed vs badged, grouped by labor distribution.
-    #      "Badged" = holds at least one live badge with a real number
-    #      (not deactivated/termed/returned). Employee counts come from
-    #      Current Employees.csv, so the axis is the HR labor dist.
-    live_badged, live_locs = set(), set()
+    # ---- Coverage: employed vs badged, grouped by BADGE GROUP (airport).
+    #      "Badged" = holds at least one live badge with a real number filed in
+    #      THIS group (not deactivated/termed/returned) — so a badge only counts
+    #      for the airport it belongs to. Employee counts come from Current
+    #      Employees.csv, each employee placed in their labor dist's group.
+    live_by_group = {}   # group -> set of employee ids with a live badge here
     for b in badge_rows:
         if (b[4] and b[7] in ("Active", "Expiring", "Expired", "Unknown")
-                and b[8] != "Yes"):
+                and b[8] != "Yes" and b[9] and b[11] != "Unmatched"):
             bnid = norm_eid(b[1])
             if bnid:
-                live_badged.add(bnid)
-            if b[9] and b[11] != "Unmatched":
-                live_locs.add(b[9])
+                live_by_group.setdefault(b[9], set()).add(bnid)
     cov_agg = {}
     for cid, (_st, clabor, _pos, _cn) in cur_emp.items():
-        ld = clabor or "(no labor dist)"
-        c = cov_agg.setdefault(ld, [0, 0])
+        g = badge_group(clabor) or "(no labor dist)"
+        c = cov_agg.setdefault(g, [0, 0])
         c[0] += 1
-        if cid in live_badged:
+        if cid in live_by_group.get(g, ()):
             c[1] += 1
-    # folders = every labor dist with employees PLUS every location that has
-    # live badges filed to it (e.g. SRQ badges with no matching labor dist)
-    folders = sorted(set(cov_agg) | live_locs)
-    coverage = [[ld, *cov_agg.get(ld, [0, 0])] for ld in folders]
+    # folders = every group with employees PLUS every group that has live badges
+    # filed to it (e.g. a badge-only airport with no matching labor dist)
+    folders = sorted(set(cov_agg) | set(live_by_group))
+    coverage = [[g, *cov_agg.get(g, [0, 0])] for g in folders]
     # per-employee list for the coverage drill-down (one row per current
-    # employee: id, name, labor dist, position)
+    # employee: id, name, badge group, position)
     employees = sorted(
-        ([cid, cn, clabor or "(no labor dist)", cpos]
+        ([cid, cn, badge_group(clabor) or "(no labor dist)", cpos]
          for cid, (_cs, clabor, cpos, cn) in cur_emp.items()),
         key=lambda e: (e[2], e[1].lower()))
     print(f"coverage: {sum(v[1] for v in cov_agg.values())} of "
           f"{sum(v[0] for v in cov_agg.values())} current employees hold a live "
-          f"badge, across {len(coverage)} labor distributions")
+          f"badge for their airport, across {len(coverage)} badge groups")
 
     # ---- Badge Specifications by Location: owner-editable control table
     #      (Definitive Lists/Badge Specifications.csv). Drives the New Badge
@@ -658,7 +699,22 @@ def main():
                 ]
     except FileNotFoundError:
         print("badge specs: Badge Specifications.csv not found - form defaults off")
-    print(f"badge specs: {len(badge_specs)} locations configured "
+    # re-key specs by badge group — the tracker resolves a spec per group now.
+    # Member dists of a group share one spec by design (CAK/STL were split out
+    # precisely because theirs differ); flag it loudly if two ever disagree.
+    grouped_specs = {}
+    # compare the OPERATIONAL fields only (every index except [7] Display Note,
+    # which is free text and legitimately varies between member dists)
+    op = lambda s: s[:7] + s[8:]
+    for sloc, spec in badge_specs.items():
+        g = badge_group(sloc)
+        if g in grouped_specs and op(grouped_specs[g]) != op(spec):
+            print(f"  WARNING: badge spec conflict within group {g!r} "
+                  f"(from {sloc!r}) - keeping the first; split the group if real")
+            continue
+        grouped_specs.setdefault(g, spec)
+    badge_specs = grouped_specs
+    print(f"badge specs: {len(badge_specs)} groups configured "
           f"({sum(1 for v in badge_specs.values() if v[0].lower() == 'no')} no-badge)")
 
     # ---- Active roster, minimal fields, for the New Badge employee picker
