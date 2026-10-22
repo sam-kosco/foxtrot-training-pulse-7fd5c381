@@ -50,9 +50,28 @@ two top tabs — Training | Badges — with Active/Terminated sub-views inside B
   Unmatched records are kept and labeled (never guessed, never dropped).
   A badge with Returned = Yes always renders in the Deactivated view, never active;
   the Returned column is shown only there.
-- **Sub-views (two):** Coverage — the entry view: one row per FOLDER (all labor
-  distributions plus any badge-only locations like SRQ; employee counts from
-  Current Employees.csv, badge counts by where the badge is FILED). Badges file
+- **Badge grouping (airport-level, 2026-10-21):** the whole Badge Tracker groups
+  by AIRPORT, not by individual labor distribution — badging is an airport-level
+  concern and the dists at an airport almost always share one spec. `badge_group()`
+  in `build_training.py` collapses every dist/location to its 3-letter airport code
+  (BNA MRO/FAC/PRIV/CABIN → `BNA`, DFW CABIN/WIDEBODY → `DFW`), with two confirmed
+  exceptions: **CAK** stays per-dist (`CAK PRIV`/`CAK CABIN`/`CAK HQ` issue different
+  badge types) and **STL** splits into `STL AA` (STL AA CAB/ULTRA/FAC — AA-client,
+  identical spec) and `STL GJ` (STL GOJET — Green Stripe). It's applied in the build
+  to the EMBEDDED data only — badge location `[9]` + holder labor dist `[10]`,
+  coverage, folders, specs (re-keyed by group; operational fields must agree within a
+  group or it warns), badgeLocs, and the grouped contact map `grp_mgrs`. **Badges.csv
+  and the spec CSV are never rewritten** (new badges just file under the group name;
+  the per-dist rows regroup at the next build), and **External Credentials keep their
+  own ungrouped locations/`loc_mgrs`.** The JS template needed no change — it already
+  keys off those fields. `badgeGroup()` logic, if ever needed client-side, must mirror
+  the Python exactly.
+- **Sub-views (two):** Coverage — the entry view: one row per FOLDER (now an airport
+  group per the rule above; plus any badge-only groups like SRQ; employee counts from
+  Current Employees.csv, badge counts by where the badge is FILED). **Coverage/Badged
+  counts a person only if they hold a live badge filed in THAT group** (a badge at a
+  different airport doesn't count); no-badge-required groups are excluded from the
+  headline Coverage %. Badges file
   by badge location, which was rewritten to the official folder vocabulary
   (Clara's decision sheet + rule: single-candidate airport, else holder's own
   labor dist). Clicking a folder drills in: the badges filed there (a visitor's
