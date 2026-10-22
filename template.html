@@ -740,10 +740,13 @@ function renderDrill(){
   // the location's standard badge specification, straight from the table
   const dspec = !unm && DATA.badgeSpecs[covLD];
   const sp = $("#bspec");
+  // header carries the location name so it's visible when scrolled to the table;
+  // shown on every real location page (not the Unmatched view), even where no
+  // specification row exists yet
+  const specHdr = unm ? "" :
+    `<div style="font-weight:700;margin-bottom:5px">${esc(covLD)} Badging Specification</div>`;
   if (dspec){
     sp.style.display = "";
-    // header carries the location name so it's visible when scrolled to the table
-    const specHdr = `<div style="font-weight:700;margin-bottom:5px">${esc(covLD)} Badging Specification</div>`;
     sp.innerHTML = specHdr + (dspec[0].toLowerCase() === "no"
       ? `<b>No Badge Required</b> at ${esc(covLD)} for airport badges &middot;
          <b>Badge Type:</b> Customer Badge (available)`
@@ -757,6 +760,11 @@ function renderDrill(){
         + (dspec[8] ? ` &middot; badge number &amp; expiration optional` : "")
         + (dspec[7] ? `<div style="margin-top:4px;font-style:italic;
             color:var(--muted)">Note: ${esc(dspec[7])}</div>` : ""));
+  } else if (!unm){
+    sp.style.display = "";
+    sp.innerHTML = specHdr + `<span style="color:var(--muted)">No badge specification
+      on file for this location yet &mdash; add a row to Badge Specifications.csv
+      (Definitive Lists) to set its defaults.</span>`;
   } else sp.style.display = "none";
   const liveRows = DATA.badges.filter(b => !isTermRow(b) && b[7] !== "Not Badged");
   let all = [];   // {b: badgeRow|null, e: [eid,name,ld,pos]|null}
