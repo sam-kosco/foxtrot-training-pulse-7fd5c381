@@ -345,10 +345,16 @@ const BADGEAUTH = decodeURIComponent(
 const BADGEAPI = decodeURIComponent(
   (location.hash.match(/badgeapi=([^&]*)/) || [])[1] || "");
 const EMBEDDED = /(^|[#&])embed=1(?:&|$)/.test(location.hash);
+// External Credentials is gated to GLOBAL ADMINS for now: the platform shell
+// adds ecadmin=1 to the embed hash only for real global admins. Absent it (the
+// public page, the mirror, any non-admin embed) the tab is hidden and the
+// #credentials routes fall back to the Training Dashboard.
+const EC_ALLOWED = /(^|[#&])ecadmin=1(?:&|$)/.test(location.hash);
 const CARRY = [PSCRAW,
                (location.hash.match(/badgeauth=[^&]*/) || [])[0] || "",
                (location.hash.match(/badgeapi=[^&]*/) || [])[0] || "",
-               EMBEDDED ? "embed=1" : ""]
+               EMBEDDED ? "embed=1" : "",
+               EC_ALLOWED ? "ecadmin=1" : ""]
   .filter(Boolean).join("&");
 const H0 = location.hash.split("&")[0];
 const setHash = h => history.replaceState(null, "", h + (CARRY ? "&" + CARRY : ""));
@@ -372,6 +378,9 @@ else if (H0 === "#termed" || H0 === "#deactivated") {
 else if (H0 === "#credentials") { tab = "ext"; ecView = "cov"; }
 else if (H0 === "#credentials-deactivated") { tab = "ext"; ecView = "de"; }
 else if (H0 === "#training") tab = "training";
+// External Credentials is admin-gated: fall back to the dashboard otherwise
+// (covers both the #credentials routes and a stale "ext" in saved state)
+if (tab === "ext" && !EC_ALLOWED) tab = "training";
 if (DEEP) {   // never let a saved filter or the wrong sub-view hide the linked badge
   bq = "";
   const d = DATA.badges.find(b => b[0] === DEEP);
@@ -2202,6 +2211,8 @@ $("#locsel").addEventListener("change", e => {
   loc = e.target.value; saveState(); render();
 });
 if (EMBEDDED) document.querySelector(".tabs").style.display = "none";
+// hide the External Credentials tab unless this viewer is a global admin
+if (!EC_ALLOWED) $("#tab-ext").style.display = "none";
 window.addEventListener("hashchange", () => {
   const h0 = location.hash.split("&")[0];
   if (h0 === "#badges" || h0 === "#coverage") { tab = "badges"; }
@@ -2210,6 +2221,7 @@ window.addEventListener("hashchange", () => {
   else if (h0 === "#credentials-deactivated") { tab = "ext"; ecView = "de"; }
   else if (h0 === "#training") { tab = "training"; }
   else return;                       // deep links etc. keep load-time behavior
+  if (tab === "ext" && !EC_ALLOWED) { tab = "training"; setHash("#training"); }
   saveState(); applyTab();
   if (tab === "badges") renderBadges();
   if (tab === "ext") renderExt();
