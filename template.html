@@ -787,7 +787,8 @@ function renderCoverage(){
     <div class="cell num">${nb
       ? `<span style="color:var(--muted)" title="airport badge not required here">n/a</span>`
       : c[1] ? `<span class="pill ${covPill(pct(c))}">${pct(c)}%</span>` : "&mdash;"}</div>
-    ${luCell(DATA.badgeLastUpd[c[0]])}
+    ${nb ? `<div class="cell num" style="color:var(--muted)">&mdash;</div>`
+         : luCell(DATA.badgeLastUpd[c[0]])}
   </div>` + subRows(c[0]); }).join("");
   const unmN = (stats[UNM] || {}).t || 0;
   const unmHit = !!q && DATA.badges.some(b => b[11] === "Unmatched"
@@ -852,7 +853,9 @@ function renderDrill(){
       on file for this location yet &mdash; add a row to Badge Specifications.csv
       (Definitive Lists) to set its defaults.</span>`;
   } else sp.style.display = "none";
-  if (!unm) sp.innerHTML += luNote(DATA.badgeLastUpd[covLD], "badge");
+  // no-badge-required airports track nothing, so they carry no activity note
+  if (!unm && !noBadgeLoc(covLD))
+    sp.innerHTML += luNote(DATA.badgeLastUpd[covLD], "badge");
   const liveRows = DATA.badges.filter(b => !isTermRow(b) && b[7] !== "Not Badged");
   let all = [];   // {b: badgeRow|null, e: [eid,name,ld,pos]|null}
   let emps = [];
