@@ -472,6 +472,18 @@ def main():
                 term_names[key] = (None if key in term_names
                                    and term_names[key] != tid else tid)
     badge_rows, badge_locs, badge_alerts = [], set(), []
+    # per-location "last record activity": platform saves stamp Last Updated
+    # By/At (ISO, so string max = newest); where no stamp exists yet, the
+    # newest Deactivated Date serves as a weaker, labeled fallback
+    badge_stamp, badge_fallback = {}, {}
+
+    def note_activity(stamp_d, fb_d, loc, row):
+        lu_at = row.get("Last Updated At", "").strip()
+        if loc and lu_at and (loc not in stamp_d or lu_at > stamp_d[loc][1]):
+            stamp_d[loc] = [row.get("Last Updated By", "").strip(), lu_at]
+        dd = row.get("Deactivated Date", "").strip()
+        if loc and dd and (loc not in fb_d or dd > fb_d[loc]):
+            fb_d[loc] = dd
     for r in read_csv("badges"):
         bname = fix_display_name(r.get("Employee Name", "").strip())
         if not bname:
@@ -565,6 +577,7 @@ def main():
             ynorm(r.get("Tool Access", "")),    # [19] per-badge answer
             r.get("Customs Number", "").strip(),   # [20] shown when Customs=Yes
         ])
+        note_activity(badge_stamp, badge_fallback, bloc, r)
         # alert: terminated employee whose badge has not been closed out.
         # Cleared by the close-out flow (which requires the return for
         # terminations going forward); legacy records were bulk-closed at
@@ -739,6 +752,7 @@ def main():
     ext_expires = {(l, t): (ex or "Yes") for l, t, _rq, ex, _n in ext_reqs}
 
     ext_rows, ext_alerts = [], []
+    ext_stamp, ext_fallback = {}, {}
     for r in read_csv("externals", missing_ok=True):
         xname = fix_display_name(r.get("Employee Name", "").strip())
         xnum = r.get("Credential Number", "").strip()
@@ -796,6 +810,7 @@ def main():
             r.get("Deactivated Date", "").strip(),   # [11]
             r.get("Deactivation Reason", "").strip(),  # [12]
         ])
+        note_activity(ext_stamp, ext_fallback, xloc, r)
         # a terminated holder's still-open credential needs cancelling with
         # the issuer - surfaced in the tab's needs-attention box (not yet in
         # the email alertsFeed; digest integration is a follow-up with Sam)
@@ -809,6 +824,18 @@ def main():
     print(f"external credentials: {len(ext_rows)} rows, "
           f"{len(ext_reqs)} location requirements, types: {ext_types}; "
           f"{len(ext_alerts)} terminated-holder alerts")
+
+    # per-location last record activity, both tabs: a real stamp wins; the
+    # newest deactivation date fills in (labeled weaker) until stamps exist
+    def last_activity(stamp_d, fb_d):
+        out = {loc: ["", d, "deact"] for loc, d in fb_d.items()}
+        out.update({loc: [v[0], v[1], "stamp"] for loc, v in stamp_d.items()})
+        return out
+    badge_last_upd = last_activity(badge_stamp, badge_fallback)
+    ext_last_upd = last_activity(ext_stamp, ext_fallback)
+    print(f"last-activity: badges {len(badge_stamp)} stamped / "
+          f"{len(badge_fallback)} fallback locations; externals "
+          f"{len(ext_stamp)} stamped / {len(ext_fallback)} fallback")
 
     # ---- Freshness: per-source last-refresh times. The header "Data as of"
     #      shows the OLDEST of the data sources — nothing on the page is staler
@@ -865,6 +892,8 @@ def main():
         "badgeLocs": sorted(badge_locs),
         "badgeSoonDays": BADGE_SOON_DAYS,
         "badgesAsof": fresh["badges"],
+        "badgeLastUpd": badge_last_upd,
+        "extLastUpd": ext_last_upd,
         "externals": ext_rows,
         "extReqs": ext_reqs,
         "extTypes": ext_types,

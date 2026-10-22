@@ -151,6 +151,16 @@ two top tabs — Training | Badges — with Active/Terminated sub-views inside B
   don't drop the credentials.
 - **Deep links:** `#badge/<id>` highlights a row; `#renew/<id>` opens that badge's
   renewal form (target for alert emails).
+- **Last update (both Badges and External Credentials, 2026-10-16):** the CSVs
+  carry `Last Updated By` / `Last Updated At` columns. PLATFORM CONTRACT: every
+  save endpoint (badges and credentials, all actions) must stamp both on the
+  row it writes - the acting user's display name and an ISO local timestamp
+  (`YYYY-MM-DDTHH:MM`). The build keeps each location's newest stamp
+  (`badgeLastUpd` / `extLastUpd`), shown as a Coverage "Last update" column
+  (hover = who/when) and a note on each location drill-down. Where no stamp
+  exists yet, the newest Deactivated Date stands in, marked `*`. This is
+  record activity, not data freshness - "Data as of" is separate. Manual CSV
+  edits only appear here if the editor fills the two columns by hand.
 
 ## External Credentials (third tab)
 
