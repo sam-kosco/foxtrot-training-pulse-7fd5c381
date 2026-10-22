@@ -125,6 +125,13 @@ input.search:focus{outline:none;border-color:var(--orange)}
 .mhd .mx{background:none;border:none;color:#c7d2e2;font-size:20px;cursor:pointer;line-height:1}
 .mhd .mx:hover{color:#fff}
 .mbody{padding:16px}
+/* wide modal + 2-column field layout for the New/Edit Badge form, so the
+   many fields fit without vertical scrolling */
+.mcard.wide{width:820px}
+.mcard.wide #f-specwrap{display:grid;grid-template-columns:1fr 1fr;
+  gap:0 22px;align-items:start}
+@media(max-width:720px){.mcard.wide{width:460px}
+  .mcard.wide #f-specwrap{grid-template-columns:1fr}}
 .frow{margin-bottom:12px}
 .frow label{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:4px}
 .frow input,.frow select{width:100%;font:inherit;color:var(--ink);background:var(--surface);
@@ -899,7 +906,17 @@ function renderDrill(){
       its own badge, so multi-airport people appear in several folders.</p>`;
 }
 
+// The Deactivated pill shows the UNRETURNED (needs-action) count scoped to the
+// location you're viewing — the drilled-in folder on Coverage, or the Location
+// filter on the Deactivated view — so "Deactivated 3" on BNA MRO means 3 there.
+function updateTermedPill(){
+  const loc = bview === "termed" ? (bloc !== ALL ? bloc : null) : (covLD || null);
+  const n = (DATA.alerts || []).filter(a => !loc || a[3] === loc).length;
+  $("#sub-termed").innerHTML = n
+    ? `Deactivated <span class="pill expired">${n}</span>` : "Deactivated";
+}
 function renderBadges(){
+  updateTermedPill();
   if (bview === "cov") return renderCoverage();
   $("#bspec").style.display = "none";
   const termed = bview === "termed";
@@ -941,14 +958,18 @@ function renderBadges(){
       tile("Not badged", n("Not Badged"), true, "personnel without a badge");
   }
 
-  // alerts card: terminated employees whose badge was never returned
-  const al = (DATA.alerts || []).filter(a => bloc === ALL || a[3] === bloc);
+  // "Unreturned badges" = terminated employees whose badge is STILL OPEN (not
+  // returned / not deactivated). These are NOT deactivated yet — the Deactivate
+  // button closes them out; the real deactivated ledger is the table below.
+  const q = bq.trim().toLowerCase();
+  const al = (DATA.alerts || []).filter(a => (bloc === ALL || a[3] === bloc)
+    && (!q || [a[0], a[1], a[2]].some(v => String(v).toLowerCase().includes(q))));
   const box = $("#balerts");
   if (termed && al.length){
     box.style.display = "";
-    box.querySelector(".hd").innerHTML = `&#9888;&#65039; Unreturned badges
-      <span class="sub">${al.length} terminated employee badge${al.length===1?"":"s"}
-      not marked returned &middot; contact = labor-distribution manager</span>`;
+    box.querySelector(".hd").innerHTML = `&#9888;&#65039; Still-open badges of terminated employees
+      <span class="sub">${al.length} not deactivated / returned yet &middot; <b>Deactivate</b>
+      to close out &middot; contact = labor-distribution manager</span>`;
     $("#balertbody").innerHTML = `<div class="grid" style="min-width:930px;
       grid-template-columns:minmax(150px,1.4fr) minmax(110px,1fr) 90px minmax(100px,1fr) minmax(170px,1.6fr) 110px">
       <div class="grow hrow"><div class="cell">Employee</div><div class="cell">Badge #</div>
@@ -965,7 +986,6 @@ function renderBadges(){
       `</div>`;
   } else box.style.display = "none";
 
-  const q = bq.trim().toLowerCase();
   const rows = scope.filter(b =>
     !(termed && openTerm(b)) &&
     (bstat === ALL || b[7] === bstat) &&
@@ -1117,8 +1137,8 @@ function resolveEmp(val){
 
 const modal = $("#modal");
 function closeModal(){ modal.style.display = "none"; modal.innerHTML = ""; }
-function openModal(title, bodyHTML){
-  modal.innerHTML = `<div class="mcard" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+function openModal(title, bodyHTML, wide){
+  modal.innerHTML = `<div class="mcard${wide ? " wide" : ""}" role="dialog" aria-modal="true" aria-label="${esc(title)}">
     <div class="mhd">${esc(title)}<button class="mx" aria-label="Close">&times;</button></div>
     <div class="mbody">${bodyHTML}</div></div>`;
   modal.style.display = "flex";
@@ -1257,7 +1277,7 @@ function openNewBadge(prefillName, prefillEid, editBadge){
     </div>
     <div class="ferr" id="f-err"></div>
     <div class="btnrow"><button class="btn ghost" id="f-cancel">Cancel</button>
-      <button class="btn primary" id="f-save">${editBadge ? "Save changes" : "Create badge"}</button></div>`);
+      <button class="btn primary" id="f-save">${editBadge ? "Save changes" : "Create badge"}</button></div>`, true);
   const info = $("#f-empinfo");
   let custMode = false, optNumExp = false;
   const applySpec = () => {
@@ -2175,19 +2195,20 @@ $("#tab-badges").addEventListener("click", () => {
   saveState(); applyTab(); renderBadges();
 });
 $("#sub-termed").addEventListener("click", () => {
-  bview = "termed"; setHash("#deactivated");
-  saveState(); applyTab(); renderBadges();
+  bview = "termed";
+  if (covLD){ bloc = covLD; $("#bloc").value = bloc; }  // carry the location you were on
+  setHash("#deactivated"); saveState(); applyTab(); renderBadges();
 });
 $("#sub-cov").addEventListener("click", () => {
-  bview = "cov"; setHash("#coverage");
-  saveState(); applyTab(); renderBadges();
+  bview = "cov";
+  if (bloc !== ALL) covLD = bloc;      // keep the same location, drilled in
+  setHash("#coverage"); saveState(); applyTab(); renderBadges();
 });
 $("#btn-back").addEventListener("click", () => {
-  covLD = null; saveState(); applyTab(); renderBadges();
+  covLD = null; bloc = ALL; $("#bloc").value = ALL;
+  saveState(); applyTab(); renderBadges();
 });
-if (DATA.alerts && DATA.alerts.length)
-  $("#sub-termed").innerHTML =
-    `Deactivated <span class="pill expired">${DATA.alerts.length}</span>`;
+updateTermedPill();
 $("#bloc").addEventListener("change", e => { bloc = e.target.value; saveState(); renderBadges(); });
 $("#bstat").addEventListener("change", e => { bstat = e.target.value; saveState(); renderBadges(); });
 $("#bsearch").addEventListener("input", e => { bq = e.target.value; renderBadges(); });
