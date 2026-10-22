@@ -585,7 +585,11 @@ function renderChart(sel){
 // badge row indexes: 0 id, 1 empId, 2 name, 3 position, 4 number, 5 type,
 //                    6 expiration (ISO), 7 status, 8 returned, 9 location
 const PILLC = {Active:"active", Expiring:"expiring", Expired:"expired", Termed:"termed",
-  "Not Badged":"notbadged", Unknown:"unknown", Deactivated:"termed"};
+  "Not Badged":"notbadged", "No badge needed":"active", Unknown:"unknown", Deactivated:"termed"};
+// a location whose Badge Specifications row says Badge Required = No: its
+// employees are NOT out of compliance when they hold no airport badge
+const noBadgeLoc = ld => { const s = DATA.badgeSpecs[ld];
+  return !!s && String(s[0] || "").toLowerCase() === "no"; };
 // badge row: [10] = employee Labor Dist, [11] = employee status
 // ("Unmatched" = ID missing or not found; kept, never guessed),
 // [12] = deactivation reason
@@ -652,7 +656,13 @@ function renderCoverage(){
   const totE = rows.reduce((s, c) => s + c[1], 0);
   const totB = rows.reduce((s, c) => s + c[2], 0);
   const pct = e => e[1] ? Math.round(100 * e[2] / e[1]) : 0;
-  const totP = totE ? Math.round(100 * totB / totE) : 0;
+  // headline coverage excludes no-badge-required locations — their unbadged
+  // employees aren't out of compliance, so they shouldn't drag the % down
+  const reqRows = rows.filter(c => !noBadgeLoc(c[0]));
+  const reqE = reqRows.reduce((s, c) => s + c[1], 0);
+  const reqB = reqRows.reduce((s, c) => s + c[2], 0);
+  const totP = reqE ? Math.round(100 * reqB / reqE) : 0;
+  const anyNoBadge = rows.some(c => noBadgeLoc(c[0]));
   const covPill = p => p >= 90 ? "active" : p >= 70 ? "expiring" : "expired";
   const sum = k => rows.reduce((s, c) => s + ((stats[c[0]] || {})[k] || 0), 0);
   $("#bkpis").innerHTML =
@@ -661,7 +671,8 @@ function renderCoverage(){
     covTile("Expiring soon", sum("Expiring"), sum("Expiring") ? "neg" : "pos",
       "within " + DATA.badgeSoonDays + " days") +
     covTile("Expired", sum("Expired"), sum("Expired") ? "neg" : "pos", "past their date") +
-    covTile("Coverage", totP + "%", totP >= 90 ? "pos" : "neg", "badged &divide; employees");
+    covTile("Coverage", totP + "%", totP >= 90 ? "pos" : "neg",
+      anyNoBadge ? "badge-required locations only" : "badged &divide; employees");
   $("#bhd").innerHTML = `Employed vs badged
     <span class="sub">${rows.length} labor distribution${rows.length===1?"":"s"}
     &middot; click a row to open its people and badges</span>`;
@@ -697,17 +708,22 @@ function renderCoverage(){
   };
   let body = rows.map((c, i) => {
     const s = stats[c[0]] || {t: 0, Active: 0, Expiring: 0, Expired: 0};
+    // no-badge-required location: unbadged isn't a gap, so its "not badged"
+    // count and coverage % read "n/a" instead of a red shortfall
+    const nb = noBadgeLoc(c[0]);
     return `<div class="grow covrow ${i%2?"oddrow":""}" data-ld="${esc(c[0])}">
-    <div class="cell" style="font-weight:600">${esc(c[0])} &rsaquo;</div>
+    <div class="cell" style="font-weight:600">${esc(c[0])} &rsaquo;${nb
+      ? ` <span class="pill notbadged" style="font-size:10px" title="Badge Required = No in Badge Specifications">no badge req.</span>` : ""}</div>
     <div class="cell num">${c[1]}</div>
     <div class="cell num">${c[2]}</div>
-    <div class="cell num">${c[1] - c[2]}</div>
+    <div class="cell num">${nb ? "&mdash;" : c[1] - c[2]}</div>
     <div class="cell num">${s.t}</div>
     <div class="cell num">${s.Active}</div>
     ${num(s.Expiring, s.Expiring ? "#b45309" : "")}
     ${num(s.Expired, s.Expired ? "var(--bad)" : "")}
-    <div class="cell num">${c[1]
-      ? `<span class="pill ${covPill(pct(c))}">${pct(c)}%</span>` : "&mdash;"}</div>
+    <div class="cell num">${nb
+      ? `<span style="color:var(--muted)" title="airport badge not required here">n/a</span>`
+      : c[1] ? `<span class="pill ${covPill(pct(c))}">${pct(c)}%</span>` : "&mdash;"}</div>
   </div>` + subRows(c[0]); }).join("");
   const unmN = (stats[UNM] || {}).t || 0;
   const unmHit = !!q && DATA.badges.some(b => b[11] === "Unmatched"
@@ -727,8 +743,10 @@ function renderCoverage(){
   $("#bnote").innerHTML = `<p><b>Badged</b> = the employee holds at least one live badge
     with a real badge number (not deactivated or returned), matched by Employee ID.
     Badge counts (Badges/Active/Expiring/Expired) are the badges held by that labor
-    distribution's employees. Some labor distributions don't require airport badges,
-    so low coverage there is expected. Coverage colors:
+    distribution's employees. Locations marked <span class="pill notbadged"
+    style="font-size:10px">no badge req.</span> (Badge Required = No in Badge
+    Specifications) don't require an airport badge, so their unbadged employees aren't
+    counted as a gap and they're left out of the headline Coverage. Coverage colors:
     <span class="pill active">90%+</span>
     <span class="pill expiring">70&ndash;89%</span>
     <span class="pill expired">under 70%</span>.</p>`;
@@ -792,7 +810,10 @@ function renderDrill(){
         all.push({b: null, e, away: [...new Set(bs.map(b => b[9] || "?"))]});
     });
   }
-  const stat = r => r.b ? r.b[7] : (r.away ? "Badged elsewhere" : "Not Badged");
+  // at a no-badge-required location, an unbadged employee is compliant, not a gap
+  const noBadge = !unm && !!dspec && String(dspec[0]).toLowerCase() === "no";
+  const stat = r => r.b ? r.b[7]
+    : (r.away ? "Badged elsewhere" : (noBadge ? "No badge needed" : "Not Badged"));
   const cnt = st => all.filter(r => stat(r) === st).length;
   const notBadged = all.filter(r => !r.b && !r.away).length;
   $("#bkpis").innerHTML = unm
@@ -804,14 +825,17 @@ function renderDrill(){
       covTile("Expiring soon", cnt("Expiring"), cnt("Expiring") ? "neg" : "pos",
         "within " + DATA.badgeSoonDays + " days") +
       covTile("Expired", cnt("Expired"), cnt("Expired") ? "neg" : "pos", "past their date") +
-      covTile("Not badged", notBadged, notBadged ? "neg" : "pos", "no live badge anywhere");
+      (noBadge
+        ? covTile("No badge needed", notBadged, "pos", "airport badge not required here")
+        : covTile("Not badged", notBadged, notBadged ? "neg" : "pos", "no live badge anywhere"));
   const q = bq.trim().toLowerCase();
   let rows = all.filter(r => {
     if (!q) return true;
     const hay = r.b ? [r.b[0], r.b[1], r.b[2], r.b[4]] : [r.e[0], r.e[1]];
     return hay.some(v => String(v).toLowerCase().includes(q));
   });
-  const ord = {Expired: 0, Expiring: 1, Unknown: 2, Active: 3, "Not Badged": 4};
+  const ord = {Expired: 0, Expiring: 1, Unknown: 2, Active: 3,
+    "Not Badged": 4, "No badge needed": 4};
   rows.sort((a, b2) => (ord[stat(a)] ?? 9) - (ord[stat(b2)] ?? 9)
     || (a.b ? a.b[2] : a.e[1]).localeCompare(b2.b ? b2.b[2] : b2.e[1]));
   $("#bhd").innerHTML = `${unm ? "Unmatched badge records" : "People &amp; badges"}
