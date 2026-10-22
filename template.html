@@ -229,8 +229,6 @@ input.search:focus{outline:none;border-color:var(--orange)}
   <div class="controls">
     <label for="bloc" id="bloc-l">Location</label>
     <select id="bloc" aria-label="Choose badge location"></select>
-    <label for="bstat" id="bstat-l">Status</label>
-    <select id="bstat" aria-label="Filter by badge status"></select>
     <label for="bsearch">Search</label>
     <input id="bsearch" class="search" type="search" placeholder="name, ID, badge number"
       aria-label="Search badges">
@@ -325,7 +323,7 @@ let S_MGRS = DATA.managers, S_LOCS = DATA.locations, SCOPED = false;
 })();
 
 let rm = ALL, loc = ALL;
-let tab = "training", bview = "cov", covLD = null, bloc = ALL, bstat = ALL, bq = "";
+let tab = "training", bview = "cov", covLD = null, bloc = ALL, bq = "";
 // External Credentials tab state (parallel to the badge state, ec- prefixed)
 let ecView = "cov", ecLD = null, ecStat = ALL, ecQ = "";
 let ecType = (DATA.extTypes || [])[0] || "Y Number";
@@ -362,7 +360,6 @@ try{
   if (s.tab === "ext") tab = "ext";
   if (s.bview === "termed") bview = "termed";
   if (s.covLD === UNM || DATA.coverage.some(c => c[0] === s.covLD)) covLD = s.covLD;
-  if (typeof s.bstat === "string") bstat = s.bstat;
   if (s.ecView === "de") ecView = "de";
   if ((DATA.extTypes || []).includes(s.ecType)) ecType = s.ecType;
   if ((DATA.extReqs || []).some(r => r[0] === s.ecLD)) ecLD = s.ecLD;
@@ -376,7 +373,7 @@ else if (H0 === "#credentials") { tab = "ext"; ecView = "cov"; }
 else if (H0 === "#credentials-deactivated") { tab = "ext"; ecView = "de"; }
 else if (H0 === "#training") tab = "training";
 if (DEEP) {   // never let a saved filter or the wrong sub-view hide the linked badge
-  bstat = ALL; bq = "";
+  bq = "";
   const d = DATA.badges.find(b => b[0] === DEEP);
   if (d && (["Terminated","Retired","Deceased"].includes(d[11])
       || d[7] === "Termed" || d[7] === "Deactivated" || d[8] === "Yes")) {
@@ -387,7 +384,7 @@ if (DEEP) {   // never let a saved filter or the wrong sub-view hide the linked 
   }
 }
 function saveState(){ sessionStorage.setItem("tp-state",
-  JSON.stringify({rm, loc, tab, bview, covLD, bstat,
+  JSON.stringify({rm, loc, tab, bview, covLD,
                   ecView, ecLD, ecType, ecStat})); }
 
 // reverse map: location -> managers
@@ -587,7 +584,6 @@ function renderChart(sel){
 /* ---------- badges tab ---------- */
 // badge row indexes: 0 id, 1 empId, 2 name, 3 position, 4 number, 5 type,
 //                    6 expiration (ISO), 7 status, 8 returned, 9 location
-const BSTATUSES = ["Active","Expiring","Expired","Not Badged","Unknown"];
 const PILLC = {Active:"active", Expiring:"expiring", Expired:"expired", Termed:"termed",
   "Not Badged":"notbadged", Unknown:"unknown", Deactivated:"termed"};
 // badge row: [10] = employee Labor Dist, [11] = employee status
@@ -607,9 +603,6 @@ function renderBadgeControls(){
   $("#bloc").innerHTML =
     `<option value="${ALL}" ${bloc===ALL?"selected":""}>All Locations</option>` +
     DATA.badgeLocs.map(l => `<option ${l===bloc?"selected":""}>${esc(l)}</option>`).join("");
-  $("#bstat").innerHTML =
-    `<option value="${ALL}" ${bstat===ALL?"selected":""}>All Statuses</option>` +
-    BSTATUSES.map(s0 => `<option ${s0===bstat?"selected":""}>${s0}</option>`).join("");
 }
 
 // reason pill colors for the Deactivated view
@@ -804,7 +797,6 @@ function renderDrill(){
       covTile("Not badged", notBadged, notBadged ? "neg" : "pos", "no live badge anywhere");
   const q = bq.trim().toLowerCase();
   let rows = all.filter(r => {
-    if (bstat !== ALL && stat(r) !== bstat) return false;
     if (!q) return true;
     const hay = r.b ? [r.b[0], r.b[1], r.b[2], r.b[4]] : [r.e[0], r.e[1]];
     return hay.some(v => String(v).toLowerCase().includes(q));
@@ -988,7 +980,6 @@ function renderBadges(){
 
   const rows = scope.filter(b =>
     !(termed && openTerm(b)) &&
-    (bstat === ALL || b[7] === bstat) &&
     (!q || [b[0], b[1], b[2], b[4]].some(v => v.toLowerCase().includes(q))));
   $("#bhd").innerHTML = `${termed ? "Deactivated &amp; terminated badges" : "Badges"}
     <span class="sub">${rows.length.toLocaleString()}
@@ -1108,7 +1099,6 @@ function applyTab(){
   // navigates by folder instead); it always includes All Locations
   ["bloc","bloc-l"].forEach(id =>
     $("#" + id).style.display = bview === "termed" ? "" : "none");
-  ["bstat","bstat-l"].forEach(id => $("#" + id).style.display = drilled ? "" : "none");
   $("#btitle").innerHTML = bview === "termed"
     ? `Deactivated Badges <span class="sub">&middot; closed-out badges and terminated employees</span>`
     : drilled
@@ -2213,7 +2203,6 @@ $("#btn-back").addEventListener("click", () => {
 });
 updateTermedPill();
 $("#bloc").addEventListener("change", e => { bloc = e.target.value; saveState(); renderBadges(); });
-$("#bstat").addEventListener("change", e => { bstat = e.target.value; saveState(); renderBadges(); });
 $("#bsearch").addEventListener("input", e => { bq = e.target.value; renderBadges(); });
 $("#btn-new").addEventListener("click", () => openNewBadge(null, null, null, covLD));
 $("#bbody").addEventListener("click", e => {
