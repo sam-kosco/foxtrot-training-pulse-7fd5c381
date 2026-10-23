@@ -472,17 +472,31 @@ def main():
                 term_names[key] = (None if key in term_names
                                    and term_names[key] != tid else tid)
     badge_rows, badge_locs, badge_alerts = [], set(), []
-    # per-location "last record activity": platform saves stamp Last Updated
-    # By/At (ISO, so string max = newest); where no stamp exists yet, the
-    # newest Deactivated Date serves as a weaker, labeled fallback
+    # per-location "last record activity". The platform records every
+    # create/renew/edit/deactivate as a dated audit line in the NOTES column
+    # ("YYYY-MM-DD Actor Name (id): what", "; "-joined — engine/badges.py
+    # _stamp_note / credentials.py). Clara's column first read dedicated
+    # "Last Updated At/By" columns, but the save never writes those, so every
+    # platform edit read as "never updated" (CAK HQ, MLB...). Parse the newest
+    # Notes line instead; the stored employee id is stripped for display.
+    # Where no platform note exists yet, the newest Deactivated Date is a
+    # weaker, labeled fallback.
     badge_stamp, badge_fallback = {}, {}
+    _note_re = re.compile(r"\s*(\d{4}-\d{2}-\d{2})\s+(.+?):\s")
 
     def note_activity(stamp_d, fb_d, loc, row):
-        lu_at = row.get("Last Updated At", "").strip()
-        if loc and lu_at and (loc not in stamp_d or lu_at > stamp_d[loc][1]):
-            stamp_d[loc] = [row.get("Last Updated By", "").strip(), lu_at]
+        if not loc:
+            return
+        for part in (row.get("Notes") or "").split(";"):
+            m = _note_re.match(part)
+            if not m:
+                continue
+            dt = m.group(1)
+            who = re.sub(r"\s*\(\d+\)\s*$", "", m.group(2).strip())
+            if loc not in stamp_d or dt > stamp_d[loc][1]:
+                stamp_d[loc] = [who, dt]
         dd = row.get("Deactivated Date", "").strip()
-        if loc and dd and (loc not in fb_d or dd > fb_d[loc]):
+        if dd and (loc not in fb_d or dd > fb_d[loc]):
             fb_d[loc] = dd
     for r in read_csv("badges"):
         bname = fix_display_name(r.get("Employee Name", "").strip())

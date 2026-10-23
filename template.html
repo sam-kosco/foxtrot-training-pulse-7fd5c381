@@ -636,11 +636,12 @@ const isTermRow = b => TERMGRP.includes(b[11]) || b[7] === "Termed"
 const bfmt = iso => { const m = /^(\d{4})-(\d\d)-(\d\d)$/.exec(iso);
   return m ? `${m[2]}/${m[3]}/${m[1].slice(2)}` : (iso ? esc(iso) : "&mdash;"); };
 
-/* per-location "last update" (Clara, 2026-10-16): platform saves stamp
- * Last Updated By/At on the row they touch; the build keeps each badge
- * group's newest stamp (airport-grouped, matching Sam's 2026-10-21
- * regrouping). Until stamps exist, the newest deactivation date stands in,
- * marked * - record activity, NOT data freshness (that's "Data as of"). */
+/* per-location "last update" (Clara, 2026-10-16): the build parses each
+ * badge's dated platform audit line in the Notes column (who + when) and
+ * keeps each badge group's newest (airport-grouped, matching Sam's
+ * 2026-10-21 regrouping). Until a platform note exists, the newest
+ * deactivation date stands in, marked * - record activity, NOT data
+ * freshness (that's "Data as of"). */
 const luFmt = at => {
   const m = /^(\d{4})-(\d\d)-(\d\d)[T ](\d\d):(\d\d)/.exec(at || "");
   if (!m) return bfmt(at);
