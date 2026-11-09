@@ -1695,7 +1695,11 @@ function openDeactivate(bid){
     const deactivatedDate = `${now.getFullYear()}-${String(now.getMonth() + 1)
       .padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     submitAction({action: "deactivate", badgeId: b[0], employeeId: b[1], employeeName: b[2],
-      badgeNumber: b[4], location: b[9], reason, returned,
+      badgeNumber: b[4], location: b[9], reason,
+      // the save contract wants "Yes"/"No" - a raw boolean true reads as
+      // "No" server-side ("T" is not "Y"), which rejected every
+      // return-required deactivation since the checkbox form landed
+      returned: returned ? "Yes" : "No",
       receivedBy: recv, note, deactivatedDate,
       requestedAt: now.toISOString()});
   };
