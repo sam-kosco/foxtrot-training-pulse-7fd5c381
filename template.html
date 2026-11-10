@@ -1410,9 +1410,10 @@ function openNewBadge(prefillName, prefillEid, editBadge, presetLoc){
        "f-row-xq"].forEach(id => $("#" + id).style.display = "none");
       note.style.display = "";
       note.innerHTML = `<b>Customer Badge</b> &mdash; available at every location; the
-        airport-badge questions don't apply, and the <b>expiration date is
-        optional</b> (add it only if the badge carries one). The same person can
-        also hold the Standard Airport Badge under a different badge number.`;
+        airport-badge questions don't apply, and the <b>expiration date and
+        badge number are optional</b> (add them only if the badge carries them
+        &mdash; a missing number records as N/A). The same person can also hold
+        the Standard Airport Badge under a different badge number.`;
       return;
     }
     if (spec){
@@ -1548,13 +1549,19 @@ function openNewBadge(prefillName, prefillEid, editBadge, presetLoc){
     const r = resolveEmp($("#f-emp").value), err = $("#f-err");
     if (!r) { err.textContent = "Pick an employee from the list."; return; }
     if (!$("#f-loc").value) { err.textContent = "No location set — open New Badge from a location page."; return; }
-    if (!$("#f-num").value.trim() && !optNumExp) {
+    const customerKind = $("#f-kind").value === "Customer Badge";
+    // Customer Badges at some locations (the EMB facilities) carry no number:
+    // blank or "NA" is fine and records as N/A - still a real badge
+    // (Clara, 2026-11-10). Standard badges require a number as before.
+    let numVal = $("#f-num").value.trim();
+    if (customerKind && (!numVal || /^n\.?\/?\.?a\.?$/i.test(numVal)))
+      numVal = "N/A";
+    if (!numVal && !optNumExp) {
       err.textContent = "Enter the Badge Number."; return; }
     // access-keys locations may leave number/expiration blank, and Customer
     // Badges never require an expiration anywhere (optional - some carry one,
     // many don't; Clara, 2026-11-10). A typed date must still be a real
     // MM/DD/YYYY.
-    const customerKind = $("#f-kind").value === "Customer Badge";
     let expIso = "";
     if ($("#f-exp").value.trim() || !(optNumExp || customerKind)){
       expIso = parseMDY($("#f-exp").value);
@@ -1581,7 +1588,7 @@ function openNewBadge(prefillName, prefillEid, editBadge, presetLoc){
       employeeId: r[0], employeeName: r[1],
       location: $("#f-loc").value,
       badgeType: multiSel ? $("#f-typesel").value : $("#f-type").value.trim(),
-      badgeNumber: $("#f-num").value.trim(), expiration: expIso,
+      badgeNumber: numVal, expiration: expIso,
       requestedAt: new Date().toISOString()};
     if (editBadge) payload.badgeId = editBadge[0];
     // guard: the badge number must not be the employee id (a common typo)
