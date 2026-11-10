@@ -510,6 +510,11 @@ def main():
         bexp = r.get("Expiration Date", "").strip()
         if stored in KEEP_STATUS:
             status = stored
+        elif not bexp and r.get("Badge Type", "").strip() == "Customer Badge":
+            # Customer Badges never require an expiration (optional - some
+            # carry one, many don't; Clara, 2026-11-10): no date = Active,
+            # not Unknown, and nothing to expire or alert on
+            status = "Active"
         else:
             try:
                 d = datetime.strptime(bexp, "%Y-%m-%d").date()
