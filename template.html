@@ -1410,8 +1410,9 @@ function openNewBadge(prefillName, prefillEid, editBadge, presetLoc){
        "f-row-xq"].forEach(id => $("#" + id).style.display = "none");
       note.style.display = "";
       note.innerHTML = `<b>Customer Badge</b> &mdash; available at every location; the
-        airport-badge questions don't apply. The same person can also hold the
-        Standard Airport Badge under a different badge number.`;
+        airport-badge questions don't apply, and the <b>expiration date is
+        optional</b> (add it only if the badge carries one). The same person can
+        also hold the Standard Airport Badge under a different badge number.`;
       return;
     }
     if (spec){
@@ -1549,10 +1550,13 @@ function openNewBadge(prefillName, prefillEid, editBadge, presetLoc){
     if (!$("#f-loc").value) { err.textContent = "No location set — open New Badge from a location page."; return; }
     if (!$("#f-num").value.trim() && !optNumExp) {
       err.textContent = "Enter the Badge Number."; return; }
-    // access-keys locations may leave number/expiration blank; a typed
-    // date must still be a real MM/DD/YYYY
+    // access-keys locations may leave number/expiration blank, and Customer
+    // Badges never require an expiration anywhere (optional - some carry one,
+    // many don't; Clara, 2026-11-10). A typed date must still be a real
+    // MM/DD/YYYY.
+    const customerKind = $("#f-kind").value === "Customer Badge";
     let expIso = "";
-    if ($("#f-exp").value.trim() || !optNumExp){
+    if ($("#f-exp").value.trim() || !(optNumExp || customerKind)){
       expIso = parseMDY($("#f-exp").value);
       if (!expIso) { err.textContent = "Enter the expiration date as MM/DD/YYYY."; return; }
     }
