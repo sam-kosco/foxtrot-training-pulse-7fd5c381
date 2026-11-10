@@ -572,9 +572,13 @@ def main():
         # a row whose Badge Number has no digit is not a real badge - blank,
         # "N", "N/A", "pending", "in process" are all placeholders, so the
         # person is Not Badged rather than a junk value rendering as a badge
-        # (unless it is a closed-out/termed record)
-        if not re.search(r"\d", num) and status not in (
-                "Termed", "Deactivated") and es not in TERM_GROUP:
+        # (unless it is a closed-out/termed record). EXCEPTION: Customer
+        # Badges at some locations (the EMB facilities) carry no number at
+        # all - a numberless Customer Badge is still a real, live badge
+        # (Clara, 2026-11-10); it renders with N/A as its number.
+        if (not re.search(r"\d", num) and status not in (
+                "Termed", "Deactivated") and es not in TERM_GROUP
+                and r.get("Badge Type", "").strip() != "Customer Badge"):
             status = "Not Badged"
         def ynorm(v):
             v = v.strip()

@@ -120,11 +120,13 @@ two top tabs — Training | Badges — with Active/Terminated sub-views inside B
   EXCLUDING rows whose Badge Type is "Customer Badge").
   **Customer Badge** is a second badge kind available at EVERY location,
   including no-badge ones (there the form only allows Customer Badges); it
-  carries no airport-access questions, its **expiration date is optional at
-  every location** (some customer badges carry one, many don't - a dateless
-  Customer Badge renders Active, never Unknown, and never alerts; Clara,
-  2026-11-10), and the same person can hold both the location's standard
-  badge and a Customer Badge under different numbers.
+  carries no airport-access questions, its **expiration date AND badge number
+  are optional at every location** (some customer badges carry neither - the
+  EMB facilities' have no numbers; blank or "NA" records as N/A, and a
+  dateless/numberless Customer Badge still renders as a live Active badge,
+  never Unknown or Not Badged, and never alerts; Clara, 2026-11-10), and the
+  same person can hold both the location's standard badge and a Customer
+  Badge under different numbers.
 - **Deactivation reasons** (required dropdown; recorded in the Badges.csv
   `Deactivation Reason` column, receiver in `Received By`): Employee terminated,
   Location closed, Lost or damaged, Employee transferred, Expired / replaced, Other.
