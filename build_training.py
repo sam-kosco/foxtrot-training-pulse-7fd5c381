@@ -683,8 +683,17 @@ def main():
         if cid in live_by_group.get(g, ()):
             c[1] += 1
     # folders = every group with employees PLUS every group that has live badges
-    # filed to it (e.g. a badge-only airport with no matching labor dist)
-    folders = sorted(set(cov_agg) | set(live_by_group))
+    # filed to it (e.g. a badge-only airport with no matching labor dist) PLUS
+    # every CONFIGURED group (a Badge Specifications row): the New Badge form
+    # is location-fixed, so a brand-new location with no employees or badges
+    # yet needs a Coverage row to open its page from — otherwise its first
+    # badge can never be created (the GRR gap, Clara 2026-11-13)
+    spec_groups = set()
+    for r in read_csv("specs", missing_ok=True):
+        sloc = r.get("Location", "").strip()
+        if sloc:
+            spec_groups.add(badge_group(sloc))
+    folders = sorted(set(cov_agg) | set(live_by_group) | spec_groups)
     coverage = [[g, *cov_agg.get(g, [0, 0])] for g in folders]
     # per-employee list for the coverage drill-down (one row per current
     # employee: id, name, badge group, position)
