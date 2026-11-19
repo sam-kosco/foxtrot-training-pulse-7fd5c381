@@ -919,6 +919,11 @@ def main():
         "coverage": coverage,
         "employees": employees,
         "folders": folders,
+        # employees with a termination FORM on file while Paylocity still
+        # shows them Active: the page marks them un-badgeable instead of
+        # offering a New-badge button that the roster will reject (the
+        # Greene/Itterley dead-end, 2026-11-19)
+        "etIds": sorted(et_ids & set(cur_emp)),
         "badgeSpecs": badge_specs,
         "roster": roster_min,
         "badgeLocs": sorted(badge_locs),
