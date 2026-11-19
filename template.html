@@ -941,6 +941,11 @@ function renderDrill(){
         `<button data-act="renew" data-bid="${esc(b[0])}">Renew</button>` +
         `<button class="danger" data-act="deact" data-bid="${esc(b[0])}">Deact.</button></span>`
       : r.away ? "&mdash;"
+      : ETSET.has(e[0])
+      ? `<span style="font-size:12px;color:var(--muted)" title="a termination
+          form is on file - Paylocity hasn't processed it yet, so they still
+          appear here; contact HQ if they are actually still employed">&#9888;
+          termination on file</span>`
       : `<span class="rowact"><button data-act="newfor" data-eid="${esc(e[0])}"
           data-name="${esc(e[1])}">&#65291; New badge</button></span>`;
     // Based at = the HOLDER's labor dist; a visitor's badge (holder based in
@@ -1232,6 +1237,20 @@ function resolveEmp(val){
   if (EMP[val]) return EMP[val];
   const id = String(val || "").split("—").pop().trim();
   return EMP_BY_ID[id] || null;
+}
+// employees with a termination form on file but still Active in Paylocity:
+// not badge-able (the roster excludes them), so say so instead of the
+// baffling "pick from the list" when the field is plainly filled in
+const ETSET = new Set(DATA.etIds || []);
+function empPickError(val){
+  const id = String(val || "").split("—").pop().trim();
+  if (ETSET.has(id))
+    return "This employee has a termination form on file, so a badge can't "
+      + "be issued — contact HQ if they are actually still employed.";
+  if (DATA.employees.some(e => e[0] === id))
+    return "This employee isn't in the active roster — if that looks wrong, "
+      + "contact HQ.";
+  return "Pick an employee from the list.";
 }
 
 const modal = $("#modal");
@@ -1547,7 +1566,7 @@ function openNewBadge(prefillName, prefillEid, editBadge, presetLoc){
   $("#f-cancel").onclick = closeModal;
   $("#f-save").onclick = () => {
     const r = resolveEmp($("#f-emp").value), err = $("#f-err");
-    if (!r) { err.textContent = "Pick an employee from the list."; return; }
+    if (!r) { err.textContent = empPickError($("#f-emp").value); return; }
     if (!$("#f-loc").value) { err.textContent = "No location set — open New Badge from a location page."; return; }
     const customerKind = $("#f-kind").value === "Customer Badge";
     // Customer Badges at some locations (the EMB facilities) carry no number:
@@ -1880,7 +1899,7 @@ function openNewCred(prefillName, prefillEid, prefillLoc){
   $("#f-cancel").onclick = closeModal;
   $("#f-save").onclick = () => {
     const r = resolveEmp($("#f-emp").value), err = $("#f-err");
-    if (!r) { err.textContent = "Pick an employee from the list."; return; }
+    if (!r) { err.textContent = empPickError($("#f-emp").value); return; }
     const t = $("#c-type").value, l = $("#c-loc").value;
     if (!l) { err.textContent = "Pick the location."; return; }
     if (!$("#c-num").value.trim()){
