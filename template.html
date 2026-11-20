@@ -985,7 +985,8 @@ function renderDrill(){
 // filter on the Deactivated view — so "Deactivated 3" on BNA MRO means 3 there.
 function updateTermedPill(){
   const loc = bview === "termed" ? (bloc !== ALL ? bloc : null) : (covLD || null);
-  const n = (DATA.alerts || []).filter(a => loc ? a[3] === loc : inBScope(a[3])).length;
+  const n = (DATA.alerts || []).filter(a =>
+    loc ? (a[3] || "(no location)") === loc : inBScope(a[3])).length;
   $("#sub-termed").innerHTML = n
     ? `Deactivated <span class="pill expired">${n}</span>` : "Deactivated";
 }
@@ -997,14 +998,18 @@ function renderBadges(){
   // only rows with a real badge number count as badges here - a terminated
   // employee who never had one is a person record, not a deactivated badge
   const hasNum = b => b[4] && b[4].trim().toUpperCase() !== "N/A";
-  const scope = DATA.badges.filter(b => (bloc === ALL ? bInScope(b) : b[9] === bloc)
+  // an airport key for every record — unmatched under UNM, blank under a
+  // named bucket, so the grouped Deactivated landing can file all of them
+  const tkey = b => b[11] === "Unmatched" ? UNM : (b[9] || "(no location)");
+  const scope = DATA.badges.filter(b => (bloc === ALL ? bInScope(b) : tkey(b) === bloc)
     && hasNum(b) && (termed ? isTermRow(b) : !isTermRow(b)));
   const n = st => scope.filter(b => b[7] === st).length;
   // a terminated employee's unreturned badge lives ONLY in the Unreturned
   // badges box (with its Deactivate action) - never in the table below
   const openTerm = b => b[8] !== "Yes"
     && !["Deactivated", "Termed", "Not Badged"].includes(b[7]);
-  const label = bloc === ALL ? (BSCOPE ? "your airports" : "all airports") : bloc;
+  const label = bloc === ALL ? (BSCOPE ? "your airports" : "all airports")
+    : bloc === UNM ? "Unmatched records" : bloc;
   const tile = (lab, v, neg, sub) => `<div class="kpi"><div class="kpi-label">${lab}</div>
     <div class="kpi-val ${v ? (neg ? "neg" : "pos") : "pos"}">${v}</div>
     <div class="kpi-sub">${sub}</div></div>`;
@@ -1036,7 +1041,8 @@ function renderBadges(){
   // returned / not deactivated). These are NOT deactivated yet — the Deactivate
   // button closes them out; the real deactivated ledger is the table below.
   const q = bq.trim().toLowerCase();
-  const al = (DATA.alerts || []).filter(a => (bloc === ALL ? inBScope(a[3]) : a[3] === bloc)
+  const al = (DATA.alerts || []).filter(a =>
+    (bloc === ALL ? inBScope(a[3]) : (a[3] || "(no location)") === bloc)
     && (!q || [a[0], a[1], a[2]].some(v => String(v).toLowerCase().includes(q))));
   const box = $("#balerts");
   if (termed && al.length){
@@ -1059,6 +1065,79 @@ function renderBadges(){
           data-bid="${esc(a[0])}">Deactivate</button></span></div></div>`).join("") +
       `</div>`;
   } else box.style.display = "none";
+
+  // The Deactivated landing groups by airport, like Coverage (Clara,
+  // 2026-11-20): one row per airport, click it to open that airport's
+  // closed-out ledger. The flat table below renders only once drilled in.
+  if (termed && bloc === ALL){
+    const closed = scope.filter(b => !openTerm(b));
+    const g = {};
+    const blank = () => ({t:0, ret:0, term:0, lost:0, oth:0, unret:0});
+    closed.forEach(b => {
+      const s = g[tkey(b)] = g[tkey(b)] || blank();
+      s.t++;
+      if (b[8] === "Yes") s.ret++;
+      if (b[12] === "Employee terminated") s.term++;
+      else if (b[12] === "Lost or damaged") s.lost++;
+      else s.oth++;
+    });
+    // unreturned (still-open) badges of terminated employees count at their
+    // airport too, so a location with nothing closed but one outstanding
+    // badge still gets a row
+    (DATA.alerts || []).forEach(a => {
+      const k = a[3] || "(no location)";
+      (g[k] = g[k] || blank()).unret++;
+    });
+    const kName = k => k === UNM ? "Unmatched records" : k;
+    const bHitT = b => [b[1], b[2], b[4]]
+      .some(v => String(v || "").toLowerCase().includes(q));
+    const kHit = k => kName(k).toLowerCase().includes(q)
+      || closed.some(b => tkey(b) === k && bHitT(b))
+      || (DATA.alerts || []).some(a => (a[3] || "(no location)") === k
+           && [a[1], a[2]].some(v => String(v || "").toLowerCase().includes(q)));
+    const keys = Object.keys(g).filter(k => !q || kHit(k))
+      .sort((a, b) => (a === UNM) - (b === UNM) || a.localeCompare(b));
+    // while searching, expand each airport to its matching closed badges —
+    // same pattern as the Coverage landing; each sub-row drills in on click
+    const subRows = k => {
+      if (!q) return "";
+      return closed.filter(b => tkey(b) === k && bHitT(b)).slice(0, 40)
+        .map(b => `<div class="grow covrow" data-ld="${esc(k)}">
+          <div class="cell" style="grid-column:1/-1;padding-left:30px;font-size:12.5px;
+            font-weight:500;background:var(--rowtint)">&#8627; ${esc(b[2])}
+            <span style="color:var(--muted);font-weight:400">&middot; Emp ${esc(b[1]) || "&mdash;"}
+            &middot; ${esc(b[5] || "Badge")}${b[4] ? " #" + esc(b[4]) : ""}
+            &middot; ${esc(b[12] || b[7])}</span></div></div>`).join("");
+    };
+    const num = (v, color) => `<div class="cell num"${color && v
+      ? ` style="color:${color};font-weight:700"` : ""}>${v}</div>`;
+    const head = `<div class="grow hrow"><div class="cell">Airport</div>
+      <div class="cell num">Deactivated</div><div class="cell num">Unreturned &#9888;&#65039;</div>
+      <div class="cell num">Returned</div><div class="cell num">Emp. terminated</div>
+      <div class="cell num">Lost / damaged</div><div class="cell num">Other</div></div>`;
+    const body = keys.map((k, i) => {
+      const s = g[k];
+      return `<div class="grow covrow ${i%2?"oddrow":""}" data-ld="${esc(k)}">
+        <div class="cell" style="font-weight:600${k === UNM ? ";color:var(--bad)" : ""}">${
+          k === UNM ? "&#9888;&#65039; " : ""}${esc(kName(k))} &rsaquo;</div>
+        ${num(s.t)}${num(s.unret, "var(--bad)")}${num(s.ret)}
+        ${num(s.term)}${num(s.lost)}${num(s.oth)}</div>` + subRows(k);
+    }).join("");
+    $("#bhd").innerHTML = `Deactivated badges by airport
+      <span class="sub">${keys.length} airport${keys.length===1?"":"s"}
+      &middot; click a row to open its closed-out badges</span>`;
+    $("#bbody").innerHTML = keys.length
+      ? `<div class="grid" style="min-width:880px;grid-template-columns:
+          minmax(170px,1.7fr) 104px 116px 92px 126px 116px 82px">${head}${body}</div>`
+      : `<div style="padding:14px;color:var(--muted)">No airports match.</div>`;
+    $("#bcap").style.display = "none";
+    $("#bnote").innerHTML = `<p><b>Deactivated</b> = badges closed for any reason plus
+      every badge of a terminated employee. <b>Unreturned &#9888;&#65039;</b> = terminated
+      employees whose badge is still open — they sit in the box above until someone
+      clicks <b>Deactivate</b>. Click an airport for its full ledger with reasons and
+      return status.</p>`;
+    return;
+  }
 
   const rows = scope.filter(b =>
     !(termed && openTerm(b)) &&
@@ -1173,19 +1252,25 @@ function applyTab(){
   });
   const cov = bview === "cov";
   const drilled = cov && covLD;
+  // the Deactivated view navigates by airport row too (Clara, 2026-11-20):
+  // drilled in = any single airport open, landing = the grouped table
+  const tdrilled = bview === "termed" && bloc !== ALL;
   // New Badge lives only on a location's page — the location is then fixed,
   // so the form needs no location field (Unmatched isn't a real location)
   $("#btn-new").style.display = (drilled && covLD !== UNM) ? "" : "none";
-  $("#btn-back").style.display = drilled ? "" : "none";
+  $("#btn-back").style.display = (drilled || tdrilled) ? "" : "none";
   $("#act-hint").textContent = drilled
     ? "Renew or deactivate from a row; New Badge files to this location."
-    : cov ? "Click an airport to see its people and badges." : "";
-  // the location dropdown exists only on the Deactivated view (Coverage
-  // navigates by folder instead); it always includes All Locations
-  ["bloc","bloc-l"].forEach(id =>
-    $("#" + id).style.display = bview === "termed" ? "" : "none");
+    : cov ? "Click an airport to see its people and badges."
+    : tdrilled ? "" : "Click an airport to see its closed-out badges.";
+  // the old Deactivated location dropdown is retired — both views navigate
+  // by airport row now (Clara, 2026-11-20)
+  ["bloc","bloc-l"].forEach(id => $("#" + id).style.display = "none");
   $("#btitle").innerHTML = bview === "termed"
-    ? `Deactivated Badges <span class="sub">&middot; closed-out badges and terminated employees</span>`
+    ? (tdrilled
+      ? `${bloc === UNM ? "Unmatched Records" : esc(bloc)}
+         <span class="sub">&middot; deactivated badges</span>`
+      : `Deactivated Badges <span class="sub">&middot; closed-out badges by airport</span>`)
     : drilled
     ? `${covLD === UNM ? "Unmatched Records" : esc(covLD)}
        <span class="sub">&middot; people and badges</span>`
@@ -2339,6 +2424,9 @@ $("#bbody").addEventListener("click", e => {
   const rr = e.target.closest(".grow[data-ld]");
   if (rr && bview === "cov" && !covLD){
     covLD = rr.dataset.ld;
+    saveState(); applyTab(); renderBadges();
+  } else if (rr && bview === "termed" && bloc === ALL){
+    bloc = rr.dataset.ld;        // drill into that airport's closed-out ledger
     saveState(); applyTab(); renderBadges();
   }
 });
