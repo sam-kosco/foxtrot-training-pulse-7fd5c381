@@ -301,46 +301,19 @@ const pct = (v, dp=2) => v==null ? "&mdash;" : (100*v).toFixed(dp) + "%";
 const ALL = "__ALL__";
 const ROWCAP = 600, THRESH = 0.20;
 
-/* Platform-embed scoping: the shell passes the acting user's org-chart scope
- * in the URL hash (#pscope={rms,locs}). The public page and the legacy
- * mirror never carry the hash, so they stay unfiltered. When scoped: both
- * dropdowns trim to the viewer's scope, the RM dropdown disappears entirely
- * unless an RM sits below the viewer, and "all" means "your locations". */
+/* UNSCOPED BY DECISION (Clara, 2026-11-20): every viewer sees every location
+ * and every airport. People hold badges at airports outside their org-chart
+ * tree, so the per-viewer trim hid records managers legitimately needed.
+ * The platform shell still sends #pscope={rms,locs} in the embed hash; the
+ * page deliberately ignores it (and CARRY still echoes it through our own
+ * hash writes so reloads lose nothing). SCOPED/BSCOPE and the inBScope
+ * helpers remain so every call site keeps working in its unscoped branch —
+ * re-enable filtering by restoring applyScope() from git history (pre-#11). */
 let S_MGRS = DATA.managers, S_LOCS = DATA.locations, SCOPED = false;
-// The Badge Tracker's scope: the AIRPORT groups the viewer's labor dists map
-// to (Sam, 2026-10-22 - it showed every airport to everyone). Upper-case;
-// null = unscoped (public page, legacy mirror, HQ viewers with no hash).
-let BSCOPE = null;
-/* Mirror of badge_group() in build_training.py - keep the two identical.
- * Badging groups by airport (BNA MRO/FAC/PRIV/CABIN -> BNA), except CAK,
- * which stays per dist, and STL, which splits into STL AA and STL GJ. */
-function badgeGroup(name){
-  name = String(name || "").trim();
-  if (!name) return name;
-  const air = name.slice(0, 3).toUpperCase();
-  if (air === "CAK") return name;
-  if (air === "STL") return /GOJET/i.test(name) ? "STL GJ" : "STL AA";
-  if (/^[A-Z]{3}$/.test(air)) return air;
-  return name;
-}
-(function applyScope(){
-  const m = location.hash.match(/pscope=([^&]+)/);
-  if (!m) return;
-  let sc; try { sc = JSON.parse(decodeURIComponent(m[1])); } catch(e){ return; }
-  SCOPED = true;
-  BSCOPE = new Set((sc.locs || []).map(x => badgeGroup(x).toUpperCase()));
-  const locSet = new Set((sc.locs || []).map(x => String(x).toUpperCase()));
-  S_LOCS = DATA.locations.filter(l => locSet.has(l.toUpperCase()));
-  const rmSet = new Set((sc.rms || []).map(x => String(x).toUpperCase()));
-  S_MGRS = {};
-  Object.entries(DATA.managers).forEach(([mg, ls]) => {
-    if (rmSet.has(mg.toUpperCase()))
-      S_MGRS[mg] = ls.filter(l => locSet.has(l.toUpperCase()));
-  });
-})();
-
+let BSCOPE = null;   // null = unscoped, now always
 // in the viewer's badge scope: an airport group, and a badge (an unmatched
-// record belongs to no airport, so only an unscoped viewer sees those)
+// record belongs to no airport, so only an unscoped viewer sees those).
+// With BSCOPE pinned to null these always answer yes.
 const inBScope = g => !BSCOPE || BSCOPE.has(String(g || "").toUpperCase());
 const bInScope = b => b[11] === "Unmatched" ? !BSCOPE : inBScope(b[9]);
 
